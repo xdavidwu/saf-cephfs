@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="app_name">SAF CephFS</string>
+	<string name="conn_det">Connection Details</string>
+	<string name="mon">Monitors</string>
+	<string name="mon_summary">Monitors to connect.</string>
+	<string name="path">Path to mount</string>
+	<string name="path_summary">Path on CephFS to mount.</string>
+	<string name="auth">Authentication Details</string>
+	<string name="id">CephX user</string>
+	<string name="id_summary">CephX user to authenticate.</string>
+	<string name="key">Secret key</string>
+	<string name="key_summary">Secret key of CephX user.</string>
+	<string name="key_filled">(filled)</string>
+</resources>
