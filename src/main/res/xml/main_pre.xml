@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+	<PreferenceCategory android:title="@string/conn_det">
+		<EditTextPreference android:key="mon"
+			android:summary="@string/mon_summary"
+			android:title="@string/mon" />
+		<EditTextPreference android:key="path"
+			android:summary="@string/path_summary"
+			android:title="@string/path" />
+	</PreferenceCategory>
+	<PreferenceCategory android:title="@string/auth">
+		<EditTextPreference android:key="id"
+			android:summary="@string/id_summary"
+			android:title="@string/id" />
+		<EditTextPreference android:title="@string/key"
+			android:summary="@string/key_summary"
+			android:inputType="textPassword"
+			android:key="key" />
+	</PreferenceCategory>
+</PreferenceScreen>
