@@ -36,7 +36,6 @@ public class CephFSProxyFileDescriptorCallback extends ProxyFileDescriptorCallba
 	@Override
 	public void onRelease() {
 		cm.close(fd);
-		cm.unmount();
 	}
 
 	@Override

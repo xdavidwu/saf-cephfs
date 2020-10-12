@@ -30,6 +30,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private String id, mon, path, key;
 	private StorageManager sm;
 	private Handler ioHandler;
+	private CephMount cm;
 	private ToastThread lthread;
 	
 	private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
@@ -69,6 +70,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		HandlerThread ioThread = new HandlerThread("IO thread");
 		ioThread.start();
 		ioHandler = new Handler(ioThread.getLooper());
+		SharedPreferences settings = PreferenceManager
+			.getDefaultSharedPreferences(getContext());
+		mon = settings.getString("mon", "");
+		key = settings.getString("key", "");
+		id = settings.getString("id", "");
+		path = settings.getString("path", "");
+		cm = new CephMount(id);
+		cm.conf_set("mon_host", mon);
+		cm.conf_set("key", key);
+		cm.mount(path);
 		return true;
 	}
 
@@ -95,10 +106,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throw new UnsupportedOperationException("Mode " + mode + " not implemented");
 		}
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
-		CephMount cm = new CephMount(id);
-		cm.conf_set("mon_host", mon);
-		cm.conf_set("key", key);
-		cm.mount(path);
 		int fd;
 		try {
 			fd = cm.open(filename, flag, 0);
@@ -124,10 +131,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		Log.v("CephFS","qcf " + parentDocumentId);
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1);
-		CephMount cm = new CephMount(id);
-		cm.conf_set("mon_host", mon);
-		cm.conf_set("key", key);
-		cm.mount(path);
 		try {
 			String[] res = cm.listdir(filename);
 			for (String entry : res) {
@@ -151,17 +154,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			msg.obj = e.toString();
 			lthread.handler.sendMessage(msg);
 		}
-		cm.unmount();
 		return result;
 	}
 
 	public Cursor queryDocument(String documentId, String[] projection) {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
-		CephMount cm = new CephMount(id);
-		cm.conf_set("mon_host", mon);
-		cm.conf_set("key", key);
-		cm.mount(path);
 		try {
 			CephStat cs = new CephStat();
 			Log.v("CephFS","qf " + documentId);
@@ -182,7 +180,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			msg.obj = e.toString();
 			lthread.handler.sendMessage(msg);
 		}
-		cm.unmount();
 		return result;
 	}
 
@@ -194,7 +191,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		key = settings.getString("key", "");
 		id = settings.getString("id", "");
 		path = settings.getString("path", "");
-		MatrixCursor.RowBuilder row=result.newRow();
+		cm = new CephMount(id);
+		cm.conf_set("mon_host", mon);
+		cm.conf_set("key", key);
+		cm.mount(path);
+		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
 		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
 		row.add(Root.COLUMN_FLAGS, 0);
