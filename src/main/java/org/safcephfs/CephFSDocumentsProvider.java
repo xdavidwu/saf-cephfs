@@ -21,6 +21,7 @@ import android.widget.Toast;
 import android.util.Log;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.Vector;
 
 import com.ceph.fs.CephMount;
@@ -34,6 +35,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private Handler ioHandler;
 	private CephMount cm;
 	private ToastThread lthread;
+
+	private static final int retries = 2;
 	
 	private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
 		Root.COLUMN_ROOT_ID,
@@ -89,7 +92,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			String mode,CancellationSignal cancellationSignal) 
 			throws UnsupportedOperationException,
 			FileNotFoundException {
-		Log.v("CephFS","open " + documentId);
+		Log.v("CephFS", "open " + documentId);
 		int flag, fdmode;
 		switch (mode) {
 		case "r":
@@ -108,23 +111,40 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throw new UnsupportedOperationException("Mode " + mode + " not implemented");
 		}
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
-		int fd;
-		try {
-			fd = cm.open(filename, flag, 0);
-		} catch (FileNotFoundException e) {
-			Log.e("CephFS","open " + documentId + " not found");
-			throw new FileNotFoundException(documentId + "not found");
+		int fd = 0;
+		int r = retries;
+		while (r-- != 0) {
+			try {
+				fd = cm.open(filename, flag, 0);
+			} catch (FileNotFoundException e) {
+				Log.e("CephFS", "open " + documentId + " not found");
+				throw new FileNotFoundException(documentId + "not found");
+			} catch (IOException e) { // from jni
+				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
+					if (r != 0) {
+						Log.e("CephFS", "mount died, retrying");
+						cm.unmount();
+						cm.mount(path);
+					} else {
+						Log.e("CephFS", "mount died and tried our best");
+						throw new IllegalStateException("ESHUTDOWN");
+					}
+				} else {
+					Log.e("CephFS", "unrecognized error from jni: " + e.getMessage());
+					throw new IllegalStateException("unrecognized error");
+				}
+			}
 		}
 		try {
 			return sm.openProxyFileDescriptor(fdmode,
 					new CephFSProxyFileDescriptorCallback(cm, fd),
 					ioHandler);
-		} catch (Exception e) {
-			Log.e("CephFS","open " + documentId + " " + e.toString());
+		} catch (IOException e) {
+			Log.e("CephFS", "open " + documentId + " " + e.toString());
 			Message msg = lthread.handler.obtainMessage();
 			msg.obj = e.toString();
 			lthread.handler.sendMessage(msg);
-			return null;
+			throw new IllegalStateException("IOException from openProxyFileDescriptor");
 		}
 	}
 
@@ -134,12 +154,29 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		Log.v("CephFS", "qdf " + parentDocumentId);
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1);
-		String[] res;
-		try {
-			res = cm.listdir(filename);
-		} catch (FileNotFoundException e) {
-			Log.e("CephFS", "qdf " + parentDocumentId + " not found");
-			throw new FileNotFoundException(parentDocumentId + " not found");
+		String[] res = null;
+		int r = retries;
+		while (r-- != 0) {
+			try {
+				res = cm.listdir(filename);
+			} catch (FileNotFoundException e) {
+				Log.e("CephFS", "qdf " + parentDocumentId + " not found");
+				throw new FileNotFoundException(parentDocumentId + " not found");
+			} catch (IOException e) { // from jni
+				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
+					if (r != 0) {
+						Log.e("CephFS", "mount died, retrying");
+						cm.unmount();
+						cm.mount(path);
+					} else {
+						Log.e("CephFS", "mount died and tried our best");
+						throw new IllegalStateException("ESHUTDOWN");
+					}
+				} else {
+					Log.e("CephFS", "unrecognized error from jni: " + e.getMessage());
+					throw new IllegalStateException("unrecognized error");
+				}
+			}
 		}
 		CephStat cs = new CephStat();
 		for (String entry : res) {
@@ -170,11 +207,29 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
 		CephStat cs = new CephStat();
 		Log.v("CephFS", "qd " + documentId);
-		try {
-			cm.lstat(filename, cs);
-		} catch (FileNotFoundException|CephNotDirectoryException e) {
-			Log.e("CephFS", "qd " + documentId + " not found");
-			throw new FileNotFoundException(documentId + " not found");
+		int r = retries;
+		while (r-- != 0) {
+			try {
+				cm.lstat(filename, cs);
+				break;
+			} catch (FileNotFoundException|CephNotDirectoryException e) {
+				Log.e("CephFS", "qd " + documentId + " not found");
+				throw new FileNotFoundException(documentId + " not found");
+			} catch (IOException e) { // from jni
+				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
+					if (r != 0) {
+						Log.e("CephFS", "mount died, retrying");
+						cm.unmount();
+						cm.mount(path);
+					} else {
+						Log.e("CephFS", "mount died and tried our best");
+						throw new IllegalStateException("ESHUTDOWN");
+					}
+				} else {
+					Log.e("CephFS", "unrecognized error from jni: " + e.getMessage());
+					throw new IllegalStateException("unrecognized error");
+				}
+			}
 		}
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Document.COLUMN_DOCUMENT_ID, documentId);
