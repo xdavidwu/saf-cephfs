@@ -10,6 +10,7 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
+import android.os.Process;
 import android.os.storage.StorageManager;
 import android.os.StrictMode;
 import android.preference.PreferenceManager;
@@ -34,6 +35,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private StorageManager sm;
 	private Handler ioHandler;
 	private CephMount cm;
+	private int uid;
 	private ToastThread lthread;
 
 	private static final int retries = 2;
@@ -44,6 +46,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Root.COLUMN_ICON,
 		Root.COLUMN_TITLE,
 		Root.COLUMN_DOCUMENT_ID,
+		Root.COLUMN_SUMMARY,
+		Root.COLUMN_CAPACITY_BYTES,
+		Root.COLUMN_AVAILABLE_BYTES
 	};
 
 	private static final String[] DEFAULT_DOC_PROJECTION = new String[]{
@@ -51,8 +56,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Document.COLUMN_DISPLAY_NAME,
 		Document.COLUMN_MIME_TYPE,
 		Document.COLUMN_LAST_MODIFIED,
-		Document.COLUMN_SIZE
+		Document.COLUMN_SIZE,
+		Document.COLUMN_FLAGS
 	};
+
+	private static int PERM_READABLE = 1;
+	private static int PERM_WRITEABLE = 2;
 
 	private static String getMime(String filename) {
 		int idx = filename.lastIndexOf(".");
@@ -61,9 +70,38 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				.getMimeTypeFromExtension(
 					filename.substring(idx + 1).toLowerCase()
 				);
-			if (mime != null) return mime;
+			if (mime != null) {
+				return mime;
+			}
 		}
 		return "application/octet-stream";
+	}
+
+	private int getPerm(CephStat cs) {
+		int perm = 0;
+		if (cs.uid == uid) {
+			if ((cs.mode & 0400) == 0400) {
+				perm |= PERM_READABLE;
+			}
+			if ((cs.mode & 0200) == 0200) {
+				perm |= PERM_WRITEABLE;
+			}
+		} else if (cs.gid == uid) {
+			if ((cs.mode & 0040) == 0040) {
+				perm |= PERM_READABLE;
+			}
+			if ((cs.mode & 0020) == 0020) {
+				perm |= PERM_WRITEABLE;
+			}
+		} else {
+			if ((cs.mode & 0004) == 0004) {
+				perm |= PERM_READABLE;
+			}
+			if ((cs.mode & 0002) == 0002) {
+				perm |= PERM_WRITEABLE;
+			}
+		}
+		return perm;
 	}
 
 	@Override
@@ -75,6 +113,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		HandlerThread ioThread = new HandlerThread("IO thread");
 		ioThread.start();
 		ioHandler = new Handler(ioThread.getLooper());
+		uid = Process.myUid();
 		SharedPreferences settings = PreferenceManager
 			.getDefaultSharedPreferences(getContext());
 		mon = settings.getString("mon", "");
@@ -89,10 +128,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	}
 
 	public ParcelFileDescriptor openDocument(String documentId,
-			String mode,CancellationSignal cancellationSignal) 
+			String mode, CancellationSignal cancellationSignal)
 			throws UnsupportedOperationException,
 			FileNotFoundException {
-		Log.v("CephFS", "open " + documentId);
+		Log.v("CephFS", "open " + mode + " " + documentId);
 		int flag, fdmode;
 		switch (mode) {
 		case "r":
@@ -194,6 +233,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
 			} else if (cs.isFile()) {
 				row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
+				if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+					row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
+				}
 			}
 			row.add(Document.COLUMN_SIZE, cs.size);
 			row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
@@ -238,6 +280,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
 		} else if (cs.isFile()) {
 			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
+			if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
+			}
 		}
 		row.add(Document.COLUMN_SIZE, cs.size);
 		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
