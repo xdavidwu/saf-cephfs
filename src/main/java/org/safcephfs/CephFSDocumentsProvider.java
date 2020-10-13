@@ -127,6 +127,45 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return true;
 	}
 
+	public String createDocument(String parentDocumentId, String mimeType,
+			String displayName) throws FileNotFoundException {
+		Log.v("CephFS", "create " + parentDocumentId + " " + mimeType + " " + displayName);
+		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1)
+				+ "/" + displayName;
+		if (mimeType.equals(Document.MIME_TYPE_DIR)) {
+			// TODO handle potential exception from jni
+			cm.mkdir(filename, 0700);
+			return parentDocumentId + "/" + displayName;
+		} else {
+			int r = retries;
+			while (r-- != 0) {
+				try {
+					int fd = cm.open(filename, CephMount.O_WRONLY | CephMount.O_CREAT | CephMount.O_EXCL, 0700);
+					cm.close(fd);
+					return parentDocumentId + "/" + displayName;
+				} catch (FileNotFoundException e) {
+					Log.e("CephFS", "create " + filename + " not found");
+					throw new FileNotFoundException(parentDocumentId + "not found");
+				} catch (IOException e) { // from jni
+					if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
+						if (r != 0) {
+							Log.e("CephFS", "mount died, retrying");
+							cm.unmount();
+							cm.mount(path);
+						} else {
+							Log.e("CephFS", "mount died and tried our best");
+							throw new IllegalStateException("ESHUTDOWN");
+						}
+					} else {
+						Log.e("CephFS", "unrecognized error from jni: " + e.getMessage());
+						throw new IllegalStateException("unrecognized error");
+					}
+				}
+			}
+		}
+		return null;
+	}
+
 	public ParcelFileDescriptor openDocument(String documentId,
 			String mode, CancellationSignal cancellationSignal)
 			throws UnsupportedOperationException,
@@ -231,6 +270,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			row.add(Document.COLUMN_DISPLAY_NAME, entry);
 			if (cs.isDir()) {
 				row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
+				if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+					row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
+				}
 			} else if (cs.isFile()) {
 				row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
 				if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
@@ -278,6 +320,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Document.COLUMN_DISPLAY_NAME, filename);
 		if (cs.isDir()) {
 			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
+			if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
+			}
 		} else if (cs.isFile()) {
 			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
 			if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
@@ -311,7 +356,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
 		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
-		row.add(Root.COLUMN_FLAGS, 0);
+		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE);
 		row.add(Root.COLUMN_TITLE,"CephFS " + mon + ":" + path);
 		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);
 		row.add(Root.COLUMN_SUMMARY, id);
