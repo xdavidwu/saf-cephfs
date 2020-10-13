@@ -25,6 +25,7 @@ import java.util.Vector;
 
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
+import com.ceph.fs.CephStatVFS;
 import com.ceph.fs.CephNotDirectoryException;
 
 public class CephFSDocumentsProvider extends DocumentsProvider {
@@ -188,7 +189,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return result;
 	}
 
-	public Cursor queryRoots(String[] projection) {
+	public Cursor queryRoots(String[] projection)
+			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
 		SharedPreferences settings = PreferenceManager
 			.getDefaultSharedPreferences(getContext());
@@ -200,12 +202,21 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		cm.conf_set("mon_host", mon);
 		cm.conf_set("key", key);
 		cm.mount(path);
+		CephStatVFS csvfs = new CephStatVFS();
+		try {
+			cm.statfs("/", csvfs);
+		} catch (FileNotFoundException e) {
+			throw new FileNotFoundException("/ not found");
+		}
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
 		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
 		row.add(Root.COLUMN_FLAGS, 0);
 		row.add(Root.COLUMN_TITLE,"CephFS " + mon + ":" + path);
 		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);
+		row.add(Root.COLUMN_SUMMARY, id);
+		row.add(Root.COLUMN_CAPACITY_BYTES, csvfs.blocks * csvfs.frsize);
+		row.add(Root.COLUMN_AVAILABLE_BYTES, csvfs.bavail * csvfs.frsize);
 		return result;
 	}
 }
