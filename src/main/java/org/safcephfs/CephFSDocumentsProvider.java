@@ -25,6 +25,7 @@ import java.util.Vector;
 
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
+import com.ceph.fs.CephNotDirectoryException;
 
 public class CephFSDocumentsProvider extends DocumentsProvider {
 	private String id, mon, path, key;
@@ -111,7 +112,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			fd = cm.open(filename, flag, 0);
 		} catch (FileNotFoundException e) {
 			Log.e("CephFS","open " + documentId + " not found");
-			throw e;
+			throw new FileNotFoundException(documentId + "not found");
 		}
 		try {
 			return sm.openProxyFileDescriptor(fdmode,
@@ -127,59 +128,63 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	}
 
 	public Cursor queryChildDocuments(String parentDocumentId,
-			String[] projection, String sortOrder) {
+			String[] projection, String sortOrder)
+			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
-		Log.v("CephFS","qcf " + parentDocumentId);
+		Log.v("CephFS", "qdf " + parentDocumentId);
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1);
+		String[] res;
 		try {
-			String[] res = cm.listdir(filename);
-			for (String entry : res) {
-				CephStat cs = new CephStat();
-				Log.v("CephFS","qcf " + parentDocumentId + " " + entry);
+			res = cm.listdir(filename);
+		} catch (FileNotFoundException e) {
+			Log.e("CephFS", "qdf " + parentDocumentId + " not found");
+			throw new FileNotFoundException(parentDocumentId + " not found");
+		}
+		CephStat cs = new CephStat();
+		for (String entry : res) {
+			Log.v("CephFS", "qdf " + parentDocumentId + " " + entry);
+			try {
 				cm.lstat(filename + "/" + entry, cs);
-				MatrixCursor.RowBuilder row = result.newRow();
-				row.add(Document.COLUMN_DOCUMENT_ID, parentDocumentId + '/' + entry);
-				row.add(Document.COLUMN_DISPLAY_NAME, entry);
-				if (cs.isDir()) {
-					row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-				} else if (cs.isFile()) {
-					row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
-				}
-				row.add(Document.COLUMN_SIZE, cs.size);
-				row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
+			} catch (FileNotFoundException|CephNotDirectoryException e) {
+				Log.e("CephFS", "qdf " + parentDocumentId + ": " + entry + " not found");
+				throw new FileNotFoundException(parentDocumentId + "/" + entry + " not found");
 			}
-		} catch (Exception e) {
-			Log.e("CephFS","qcf " + parentDocumentId + " " + e.toString());
-			Message msg = lthread.handler.obtainMessage();
-			msg.obj = e.toString();
-			lthread.handler.sendMessage(msg);
+			MatrixCursor.RowBuilder row = result.newRow();
+			row.add(Document.COLUMN_DOCUMENT_ID, parentDocumentId + "/" + entry);
+			row.add(Document.COLUMN_DISPLAY_NAME, entry);
+			if (cs.isDir()) {
+				row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
+			} else if (cs.isFile()) {
+				row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
+			}
+			row.add(Document.COLUMN_SIZE, cs.size);
+			row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
 		}
 		return result;
 	}
 
-	public Cursor queryDocument(String documentId, String[] projection) {
+	public Cursor queryDocument(String documentId, String[] projection)
+			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
+		CephStat cs = new CephStat();
+		Log.v("CephFS", "qd " + documentId);
 		try {
-			CephStat cs = new CephStat();
-			Log.v("CephFS","qf " + documentId);
 			cm.lstat(filename, cs);
-			MatrixCursor.RowBuilder row = result.newRow();
-			row.add(Document.COLUMN_DOCUMENT_ID, documentId);
-			row.add(Document.COLUMN_DISPLAY_NAME, filename);
-			if (cs.isDir()) {
-				row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-			} else if (cs.isFile()) {
-				row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
-			}
-			row.add(Document.COLUMN_SIZE, cs.size);
-			row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
-		} catch(Exception e){
-			Log.e("CephFS","qf " + documentId + " " + e.toString());
-			Message msg = lthread.handler.obtainMessage();
-			msg.obj = e.toString();
-			lthread.handler.sendMessage(msg);
+		} catch (FileNotFoundException|CephNotDirectoryException e) {
+			Log.e("CephFS", "qd " + documentId + " not found");
+			throw new FileNotFoundException(documentId + " not found");
 		}
+		MatrixCursor.RowBuilder row = result.newRow();
+		row.add(Document.COLUMN_DOCUMENT_ID, documentId);
+		row.add(Document.COLUMN_DISPLAY_NAME, filename);
+		if (cs.isDir()) {
+			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
+		} else if (cs.isFile()) {
+			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
+		}
+		row.add(Document.COLUMN_SIZE, cs.size);
+		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
 		return result;
 	}
 
