@@ -209,6 +209,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return parentDocumentId + "/" + displayName;
 	}
 
+	public boolean isChildDocument(String parentDocumentId, String documentId) {
+		return documentId.startsWith(parentDocumentId) &&
+			documentId.charAt(parentDocumentId.length()) == '/';
+	}
+
 	public ParcelFileDescriptor openDocument(String documentId,
 			String mode, CancellationSignal cancellationSignal)
 			throws UnsupportedOperationException,
@@ -351,7 +356,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
 		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
-		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE);
+		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_IS_CHILD);
 		row.add(Root.COLUMN_TITLE,"CephFS " + mon + ":" + path);
 		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);
 		row.add(Root.COLUMN_SUMMARY, id);
