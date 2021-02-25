@@ -30,7 +30,7 @@ public class MainActivity extends PreferenceActivity
 		idText = (EditTextPreference) findPreference("id");
 		keyText = (EditTextPreference) findPreference("key");
 
-		SharedPreferences settings=getPreferenceScreen().getSharedPreferences();
+		SharedPreferences settings = getPreferenceScreen().getSharedPreferences();
 		settings.registerOnSharedPreferenceChangeListener(this);
 		if (!settings.getString("mon", "").equals(""))
 			monText.setSummary(settings.getString("mon", ""));
