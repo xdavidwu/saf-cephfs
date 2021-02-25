@@ -106,6 +106,18 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return perm;
 	}
 
+	private void retryMount() {
+		Log.e("CephFS", "mount died, retrying");
+		cm.unmount();
+		try {
+			cm.mount(path);
+		} catch (IOException e) {
+			Message msg = lthread.handler.obtainMessage();
+			msg.obj = "SAF CephFS: unable to remount root: " + e.toString();
+			lthread.handler.sendMessage(msg);
+		}
+	}
+
 	@Override
 	public boolean onCreate() {
 		sm = (StorageManager) getContext()
@@ -141,9 +153,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				} catch (IOException e) { // from jni
 					if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
 						if (r != 0) {
-							Log.e("CephFS", "mount died, retrying");
-							cm.unmount();
-							cm.mount(path);
+							retryMount();
 						} else {
 							Log.e("CephFS", "mount died and tried our best");
 							throw new IllegalStateException("ESHUTDOWN");
@@ -192,9 +202,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			} catch (IOException e) { // from jni
 				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
 					if (r != 0) {
-						Log.e("CephFS", "mount died, retrying");
-						cm.unmount();
-						cm.mount(path);
+						retryMount();
 					} else {
 						Log.e("CephFS", "mount died and tried our best");
 						throw new IllegalStateException("ESHUTDOWN");
@@ -235,9 +243,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			} catch (IOException e) { // from jni
 				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
 					if (r != 0) {
-						Log.e("CephFS", "mount died, retrying");
-						cm.unmount();
-						cm.mount(path);
+						retryMount();
 					} else {
 						Log.e("CephFS", "mount died and tried our best");
 						throw new IllegalStateException("ESHUTDOWN");
@@ -294,9 +300,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			} catch (IOException e) { // from jni
 				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
 					if (r != 0) {
-						Log.e("CephFS", "mount died, retrying");
-						cm.unmount();
-						cm.mount(path);
+						retryMount();
 					} else {
 						Log.e("CephFS", "mount died and tried our best");
 						throw new IllegalStateException("ESHUTDOWN");
@@ -342,7 +346,14 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		if (!checkPermissions) {
 			cm.conf_set("client_permissions", "false");
 		}
-		cm.mount(path);
+		try {
+			cm.mount(path);
+		} catch (IOException e) { // from jni
+			Message msg = lthread.handler.obtainMessage();
+			msg.obj = "SAF CephFS: unable to mount root: " + e.toString();
+			lthread.handler.sendMessage(msg);
+			return result;
+		}
 		CephStatVFS csvfs = new CephStatVFS();
 		try {
 			cm.statfs("/", csvfs);
