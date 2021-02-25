@@ -65,6 +65,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private static int PERM_READABLE = 1;
 	private static int PERM_WRITEABLE = 2;
 
+	private static String APP_NAME;
+
 	private static String getMime(String filename) {
 		int idx = filename.lastIndexOf(".");
 		if (idx > 0) {
@@ -118,21 +120,21 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			} catch (IOException e) { // from jni
 				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
 					if (r != 0) {
-						Log.e("CephFS", "mount died, retrying");
+						Log.e(APP_NAME, "mount died, retrying");
 						cm.unmount();
 						try {
 							cm.mount(path);
 						} catch (IOException e2) {
 							Message msg = lthread.handler.obtainMessage();
-							msg.obj = "SAF CephFS: unable to remount root: " + e2.toString();
+							msg.obj = APP_NAME + ": unable to remount root: " + e2.toString();
 							lthread.handler.sendMessage(msg);
 						}
 					} else {
-						Log.e("CephFS", "mount died and tried our best");
+						Log.e(APP_NAME, "mount died and tried our best");
 						throw new IllegalStateException("ESHUTDOWN");
 					}
 				} else {
-					Log.e("CephFS", "unrecognized error from jni: " + e.getMessage());
+					Log.e(APP_NAME, "unrecognized error from jni: " + e.getMessage());
 					throw new IllegalStateException("unrecognized error");
 				}
 			}
@@ -158,7 +160,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			cm.mount(path);
 		} catch (IOException e) { // from jni
 			Message msg = lthread.handler.obtainMessage();
-			msg.obj = "SAF CephFS: unable to mount root: " + e.toString();
+			msg.obj = APP_NAME + ": unable to mount root: " + e.toString();
 			lthread.handler.sendMessage(msg);
 			return false;
 		}
@@ -167,6 +169,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	@Override
 	public boolean onCreate() {
+		APP_NAME = getContext().getString(R.string.app_name);
 		sm = (StorageManager) getContext()
 			.getSystemService(Context.STORAGE_SERVICE);
 		lthread = new ToastThread(getContext());
@@ -181,7 +184,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	public String createDocument(String parentDocumentId, String mimeType,
 			String displayName) throws FileNotFoundException {
-		Log.v("CephFS", "create " + parentDocumentId + " " + mimeType + " " + displayName);
+		Log.v(APP_NAME, "create " + parentDocumentId + " " + mimeType + " " + displayName);
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1)
 				+ "/" + displayName;
 		if (mimeType.equals(Document.MIME_TYPE_DIR)) {
@@ -196,7 +199,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					cm.close(fd);
 					return null;
 				} catch (FileNotFoundException e) {
-					Log.e("CephFS", "create " + filename + " not found");
+					Log.e(APP_NAME, "create " + filename + " not found");
 					throw new FileNotFoundException(parentDocumentId + "not found");
 				}
 			});
@@ -208,7 +211,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			String mode, CancellationSignal cancellationSignal)
 			throws UnsupportedOperationException,
 			FileNotFoundException {
-		Log.v("CephFS", "open " + mode + " " + documentId);
+		Log.v(APP_NAME, "open " + mode + " " + documentId);
 		int flag, fdmode;
 		switch (mode) {
 		case "r":
@@ -231,7 +234,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			try {
 				return cm.open(filename, flag, 0);
 			} catch (FileNotFoundException e) {
-				Log.e("CephFS", "open " + documentId + " not found");
+				Log.e(APP_NAME, "open " + documentId + " not found");
 				throw new FileNotFoundException(documentId + "not found");
 			}
 		});
@@ -240,7 +243,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					new CephFSProxyFileDescriptorCallback(cm, fd),
 					ioHandler);
 		} catch (IOException e) {
-			Log.e("CephFS", "open " + documentId + " " + e.toString());
+			Log.e(APP_NAME, "open " + documentId + " " + e.toString());
 			Message msg = lthread.handler.obtainMessage();
 			msg.obj = e.toString();
 			lthread.handler.sendMessage(msg);
@@ -252,25 +255,25 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			String[] projection, String sortOrder)
 			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
-		Log.v("CephFS", "qdf " + parentDocumentId);
+		Log.v(APP_NAME, "qdf " + parentDocumentId);
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1);
 		String[] res = doCephOperation(() -> {
 			try {
 				return cm.listdir(filename);
 			} catch (FileNotFoundException e) {
-				Log.e("CephFS", "qdf " + parentDocumentId + " not found");
+				Log.e(APP_NAME, "qdf " + parentDocumentId + " not found");
 				throw new FileNotFoundException(parentDocumentId + " not found");
 			}
 		});
 		CephStat cs = new CephStat();
 		for (String entry : res) {
-			Log.v("CephFS", "qdf " + parentDocumentId + " " + entry);
+			Log.v(APP_NAME, "qdf " + parentDocumentId + " " + entry);
 			doCephOperation(() -> {
 				try {
 					cm.lstat(filename + "/" + entry, cs);
 					return null;
 				} catch (FileNotFoundException|CephNotDirectoryException e) {
-					Log.e("CephFS", "qdf " + parentDocumentId + ": " + entry + " not found");
+					Log.e(APP_NAME, "qdf " + parentDocumentId + ": " + entry + " not found");
 					throw new FileNotFoundException(parentDocumentId + "/" + entry + " not found");
 				}
 			});
@@ -299,13 +302,13 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
 		CephStat cs = new CephStat();
-		Log.v("CephFS", "qd " + documentId);
+		Log.v(APP_NAME, "qd " + documentId);
 		doCephOperation(() -> {
 			try {
 				cm.lstat(filename, cs);
 				return null;
 			} catch (FileNotFoundException|CephNotDirectoryException e) {
-				Log.e("CephFS", "qd " + documentId + " not found");
+				Log.e(APP_NAME, "qd " + documentId + " not found");
 				throw new FileNotFoundException(documentId + " not found");
 			}
 		});
