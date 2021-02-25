@@ -38,6 +38,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private int uid;
 	private ToastThread lthread;
 
+	private boolean checkPermissions = true;
+
 	private static final int retries = 2;
 	
 	private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
@@ -114,16 +116,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		ioThread.start();
 		ioHandler = new Handler(ioThread.getLooper());
 		uid = Process.myUid();
-		SharedPreferences settings = PreferenceManager
-			.getDefaultSharedPreferences(getContext());
-		mon = settings.getString("mon", "");
-		key = settings.getString("key", "");
-		id = settings.getString("id", "");
-		path = settings.getString("path", "");
-		cm = new CephMount(id);
-		cm.conf_set("mon_host", mon);
-		cm.conf_set("key", key);
-		cm.mount(path);
 		return true;
 	}
 
@@ -270,12 +262,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			row.add(Document.COLUMN_DISPLAY_NAME, entry);
 			if (cs.isDir()) {
 				row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-				if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+				if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 					row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 				}
 			} else if (cs.isFile()) {
 				row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
-				if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+				if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 					row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
 				}
 			}
@@ -320,12 +312,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Document.COLUMN_DISPLAY_NAME, filename);
 		if (cs.isDir()) {
 			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-			if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
 		} else if (cs.isFile()) {
 			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
-			if ((getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
 			}
 		}
@@ -346,6 +338,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		cm = new CephMount(id);
 		cm.conf_set("mon_host", mon);
 		cm.conf_set("key", key);
+		checkPermissions = settings.getBoolean("permissions", true);
+		if (!checkPermissions) {
+			cm.conf_set("client_permissions", "false");
+		}
 		cm.mount(path);
 		CephStatVFS csvfs = new CephStatVFS();
 		try {

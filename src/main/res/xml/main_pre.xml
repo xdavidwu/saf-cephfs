@@ -17,4 +17,9 @@
 			android:inputType="textPassword"
 			android:key="key" />
 	</PreferenceCategory>
+	<PreferenceCategory android:title="@string/misc">
+		<CheckBoxPreference android:key="permissions"
+			android:summary="@string/permissions_summary"
+			android:title="@string/permissions" />
+	</PreferenceCategory>
 </PreferenceScreen>
