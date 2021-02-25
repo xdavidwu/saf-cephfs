@@ -134,8 +134,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						throw new IllegalStateException("ESHUTDOWN");
 					}
 				} else {
-					Log.e(APP_NAME, "unrecognized error from jni: " + e.getMessage());
-					throw new IllegalStateException("unrecognized error");
+					Message msg = lthread.handler.obtainMessage();
+					msg.obj = APP_NAME + ": operation failed: " + e.getMessage();
+					lthread.handler.sendMessage(msg);
+					throw new IllegalStateException(e.getMessage());
 				}
 			}
 		}
