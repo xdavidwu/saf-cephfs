@@ -140,6 +140,31 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return null;
 	}
 
+	private boolean setupCeph() {
+		SharedPreferences settings = PreferenceManager
+			.getDefaultSharedPreferences(getContext());
+		mon = settings.getString("mon", "");
+		key = settings.getString("key", "");
+		id = settings.getString("id", "");
+		path = settings.getString("path", "");
+		cm = new CephMount(id);
+		cm.conf_set("mon_host", mon);
+		cm.conf_set("key", key);
+		checkPermissions = settings.getBoolean("permissions", true);
+		if (!checkPermissions) {
+			cm.conf_set("client_permissions", "false");
+		}
+		try {
+			cm.mount(path);
+		} catch (IOException e) { // from jni
+			Message msg = lthread.handler.obtainMessage();
+			msg.obj = "SAF CephFS: unable to mount root: " + e.toString();
+			lthread.handler.sendMessage(msg);
+			return false;
+		}
+		return true;
+	}
+
 	@Override
 	public boolean onCreate() {
 		sm = (StorageManager) getContext()
@@ -150,6 +175,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		ioThread.start();
 		ioHandler = new Handler(ioThread.getLooper());
 		uid = Process.myUid();
+		setupCeph();
 		return true;
 	}
 
@@ -305,25 +331,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	public Cursor queryRoots(String[] projection)
 			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
-		SharedPreferences settings = PreferenceManager
-			.getDefaultSharedPreferences(getContext());
-		mon = settings.getString("mon", "");
-		key = settings.getString("key", "");
-		id = settings.getString("id", "");
-		path = settings.getString("path", "");
-		cm = new CephMount(id);
-		cm.conf_set("mon_host", mon);
-		cm.conf_set("key", key);
-		checkPermissions = settings.getBoolean("permissions", true);
-		if (!checkPermissions) {
-			cm.conf_set("client_permissions", "false");
-		}
-		try {
-			cm.mount(path);
-		} catch (IOException e) { // from jni
-			Message msg = lthread.handler.obtainMessage();
-			msg.obj = "SAF CephFS: unable to mount root: " + e.toString();
-			lthread.handler.sendMessage(msg);
+		if (!setupCeph()) {
 			return result;
 		}
 		CephStatVFS csvfs = new CephStatVFS();
