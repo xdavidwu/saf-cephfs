@@ -341,6 +341,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	public Cursor queryRoots(String[] projection)
 			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
+		if (cm != null) {
+			cm.unmount();
+		}
 		if (!setupCeph()) {
 			return result;
 		}
