@@ -34,7 +34,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private String id, mon, path, key;
 	private StorageManager sm;
 	private Handler ioHandler;
-	private CephMount cm;
+	private CephMount cm = null;
 	private int uid;
 	private ToastThread lthread;
 
@@ -113,6 +113,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	}
 
 	private <T> T doCephOperation(CephOperation<T> op) {
+		if (cm == null) {
+			setupCeph();
+		}
 		int r = retries;
 		while (r-- != 0) {
 			try {
@@ -181,7 +184,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		ioThread.start();
 		ioHandler = new Handler(ioThread.getLooper());
 		uid = Process.myUid();
-		setupCeph();
 		return true;
 	}
 
