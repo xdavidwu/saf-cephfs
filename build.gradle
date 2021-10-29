@@ -4,18 +4,18 @@ buildscript {
 		jcenter()
 	}
 	dependencies {
-		classpath 'com.android.tools.build:gradle:4.1.0'
+		classpath 'com.android.tools.build:gradle:7.0.1'
 	}
 }
 apply plugin: 'com.android.application'
 
 android {
-	compileSdkVersion 'android-30'
-	buildToolsVersion '30.0.3'
+	compileSdkVersion 'android-31'
+	buildToolsVersion '31'
 
 	defaultConfig {
 		minSdkVersion 19
-		targetSdkVersion 30
+		targetSdkVersion 31
 	}
 
 	buildTypes {
