@@ -166,8 +166,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			cm.mount(path);
 		} catch (IOException e) { // from jni
 			Message msg = lthread.handler.obtainMessage();
-			msg.obj = APP_NAME + ": unable to mount root: " + e.toString();
+			String error = "unable to mount root: " + e.toString();
+			msg.obj = APP_NAME + ": " + error;
 			lthread.handler.sendMessage(msg);
+			Log.e(APP_NAME, error);
+			cm = null;
 			return false;
 		}
 		return true;
