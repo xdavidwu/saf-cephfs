@@ -154,10 +154,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		key = settings.getString("key", "");
 		id = settings.getString("id", "");
 		path = settings.getString("path", "");
+		String timeout = settings.getString("timeout", "");
+		timeout = timeout.matches("\\d+") ? timeout : "20";
 		cm = new CephMount(id);
 		cm.conf_set("mon_host", mon);
 		cm.conf_set("key", key);
-		cm.conf_set("client_mount_timeout", "20");
+		cm.conf_set("client_mount_timeout", timeout);
 		checkPermissions = settings.getBoolean("permissions", true);
 		if (!checkPermissions) {
 			cm.conf_set("client_permissions", "false");
