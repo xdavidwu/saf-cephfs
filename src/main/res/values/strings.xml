@@ -15,4 +15,5 @@
 	<string name="misc">Miscellaneous Settings</string>
 	<string name="permissions">Enforce file permissions</string>
 	<string name="permissions_summary">Whether to enforce file permissions.</string>
+	<string name="timeout">Connection timeout in seconds</string>
 </resources>

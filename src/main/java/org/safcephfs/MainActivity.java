@@ -13,7 +13,7 @@ import java.util.Arrays;
 
 public class MainActivity extends PreferenceActivity
 	implements OnSharedPreferenceChangeListener {
-	private EditTextPreference monText, pathText, idText, keyText;
+	private EditTextPreference monText, pathText, idText, keyText, timeoutText;
 
 	private void notifyRootChanges(){
 		Uri uri = DocumentsContract.buildRootsUri("org.safcephfs");
@@ -29,6 +29,7 @@ public class MainActivity extends PreferenceActivity
 		pathText = (EditTextPreference) findPreference("path");
 		idText = (EditTextPreference) findPreference("id");
 		keyText = (EditTextPreference) findPreference("key");
+		timeoutText = (EditTextPreference) findPreference("timeout");
 
 		SharedPreferences settings = getPreferenceScreen().getSharedPreferences();
 		settings.registerOnSharedPreferenceChangeListener(this);
@@ -40,6 +41,7 @@ public class MainActivity extends PreferenceActivity
 			idText.setSummary(settings.getString("id", ""));
 		if (!settings.getString("key", "").equals(""))
 			keyText.setSummary(getString(R.string.key_filled));
+		timeoutText.setSummary(settings.getString("timeout", ""));
 	}
 
 	@Override
@@ -70,6 +72,9 @@ public class MainActivity extends PreferenceActivity
 				keyText.setSummary(getString(R.string.key_summary));
 			else
 				keyText.setSummary(getString(R.string.key_filled));
+			break;
+		case "timeout":
+			timeoutText.setSummary(settings.getString("timeout", ""));
 			break;
 		}
 	}
