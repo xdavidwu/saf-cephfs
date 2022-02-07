@@ -108,6 +108,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return perm;
 	}
 
+	private void toast(String message) {
+		Message msg = lthread.handler.obtainMessage();
+		msg.obj = APP_NAME + ": " + message;
+		lthread.handler.sendMessage(msg);
+	}
+
 	// Wrapper to make IOException from JNI catchable
 	private interface CephOperation<T> {
 		T execute() throws IOException;
@@ -118,11 +124,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			try {
 				cm = setupCeph();
 			} catch (IOException e) {
-				Message msg = lthread.handler.obtainMessage();
 				String error = "Unable to mount root: " + e.toString();
-				msg.obj = APP_NAME + ": " + error;
-				lthread.handler.sendMessage(msg);
-				Log.e(APP_NAME, error);
+				toast(error);
 				throw new IllegalStateException(error);
 			}
 		}
@@ -144,18 +147,13 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 								}
 							}.execute();
 						} catch (IOException e2) {
-							Message msg = lthread.handler.obtainMessage();
-							msg.obj = APP_NAME + ": Unable to remount root: " + e2.toString();
-							lthread.handler.sendMessage(msg);
+							toast("Unable to remount root: " + e2.toString());
 						}
 					} else {
-						Log.e(APP_NAME, "Tried " + retries + " times, but mount always dies.");
 						throw new IllegalStateException("ESHUTDOWN");
 					}
 				} else {
-					Message msg = lthread.handler.obtainMessage();
-					msg.obj = APP_NAME + ": Operation failed: " + e.getMessage();
-					lthread.handler.sendMessage(msg);
+					toast("Operation failed: " + e.getMessage());
 					throw new IllegalStateException(e.getMessage());
 				}
 			}
@@ -264,11 +262,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					new CephFSProxyFileDescriptorCallback(cm, fd),
 					ioHandler);
 		} catch (IOException e) {
-			Log.e(APP_NAME, "Open " + documentId + " " + e.toString());
-			Message msg = lthread.handler.obtainMessage();
-			msg.obj = e.toString();
-			lthread.handler.sendMessage(msg);
-			throw new IllegalStateException("IOException from openProxyFileDescriptor");
+			throw new IllegalStateException("openProxyFileDescriptor: " + e.toString());
 		}
 	}
 
