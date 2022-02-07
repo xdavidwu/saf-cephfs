@@ -115,7 +115,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private <T> T doCephOperation(CephOperation<T> op) {
 		if (cm == null) {
-			setupCeph();
+			try {
+				cm = setupCeph();
+			} catch (IOException e) {
+				Message msg = lthread.handler.obtainMessage();
+				String error = "Unable to mount root: " + e.toString();
+				msg.obj = APP_NAME + ": " + error;
+				lthread.handler.sendMessage(msg);
+				Log.e(APP_NAME, error);
+				throw new IllegalStateException(error);
+			}
 		}
 		int r = retries;
 		while (r-- != 0) {
@@ -148,7 +157,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return null;
 	}
 
-	private boolean setupCeph() {
+	private CephMount setupCeph() throws IOException {
 		SharedPreferences settings = PreferenceManager
 			.getDefaultSharedPreferences(getContext());
 		mon = settings.getString("mon", "");
@@ -157,26 +166,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		path = settings.getString("path", "");
 		String timeout = settings.getString("timeout", "");
 		timeout = timeout.matches("\\d+") ? timeout : "20";
-		cm = new CephMount(id);
-		cm.conf_set("mon_host", mon);
-		cm.conf_set("key", key);
-		cm.conf_set("client_mount_timeout", timeout);
+		CephMount newMount = new CephMount(id);
+		newMount.conf_set("mon_host", mon);
+		newMount.conf_set("key", key);
+		newMount.conf_set("client_mount_timeout", timeout);
 		checkPermissions = settings.getBoolean("permissions", true);
 		if (!checkPermissions) {
-			cm.conf_set("client_permissions", "false");
+			newMount.conf_set("client_permissions", "false");
 		}
-		try {
-			cm.mount(path);
-		} catch (IOException e) { // from jni
-			Message msg = lthread.handler.obtainMessage();
-			String error = "Unable to mount root: " + e.toString();
-			msg.obj = APP_NAME + ": " + error;
-			lthread.handler.sendMessage(msg);
-			Log.e(APP_NAME, error);
-			cm = null;
-			return false;
-		}
-		return true;
+		newMount.mount(path); // IOException if fails
+		return newMount;
 	}
 
 	@Override
@@ -352,9 +351,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
 		if (cm != null) {
 			cm.unmount();
-		}
-		if (!setupCeph()) {
-			return result;
+			cm = null;
 		}
 		CephStatVFS csvfs = new CephStatVFS();
 		doCephOperation(() -> {
