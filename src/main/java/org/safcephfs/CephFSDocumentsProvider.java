@@ -368,9 +368,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
 		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
 		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_IS_CHILD);
-		row.add(Root.COLUMN_TITLE,"CephFS " + mon + ":" + path);
+		row.add(Root.COLUMN_TITLE, mon + ":" + path);
 		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);
-		row.add(Root.COLUMN_SUMMARY, id);
+		row.add(Root.COLUMN_SUMMARY, "CephFS with user: " + id);
 		row.add(Root.COLUMN_CAPACITY_BYTES, csvfs.blocks * csvfs.frsize);
 		row.add(Root.COLUMN_AVAILABLE_BYTES, csvfs.bavail * csvfs.frsize);
 		return result;
