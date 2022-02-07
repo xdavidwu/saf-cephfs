@@ -162,7 +162,7 @@ public class CephMount {
    *
    * @param root The path to use as the root (pass null for "/").
    */
-  public void mount(String root) throws IOException {
+  public void mount(String root) {
     wlock.lock();
     try {
       native_ceph_mount(instance_ptr, root);
