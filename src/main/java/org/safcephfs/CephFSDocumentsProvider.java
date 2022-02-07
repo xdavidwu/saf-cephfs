@@ -136,7 +136,13 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						Log.e(APP_NAME, "Mount died, " + r + "attempts remaining, retrying");
 						cm.unmount();
 						try {
-							cm.mount(path);
+							new CephOperation<Void>() {
+								@Override
+								public Void execute() throws IOException {
+									cm.mount(path);
+									return null;
+								}
+							}.execute();
 						} catch (IOException e2) {
 							Message msg = lthread.handler.obtainMessage();
 							msg.obj = APP_NAME + ": Unable to remount root: " + e2.toString();
