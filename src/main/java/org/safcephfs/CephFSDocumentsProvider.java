@@ -266,6 +266,37 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 	}
 
+	private void lstatBuildDocumentRow(String filename, String displayName,
+			String documentId, MatrixCursor result)
+			throws FileNotFoundException {
+		CephStat cs = new CephStat();
+		doCephOperation(() -> {
+			try {
+				cm.lstat(filename, cs);
+				return null;
+			} catch (FileNotFoundException|CephNotDirectoryException e) {
+				Log.e(APP_NAME, "lstat: " + filename + " not found");
+				throw new FileNotFoundException(documentId + " not found");
+			}
+		});
+		MatrixCursor.RowBuilder row = result.newRow();
+		row.add(Document.COLUMN_DOCUMENT_ID, documentId);
+		row.add(Document.COLUMN_DISPLAY_NAME, displayName);
+		if (cs.isDir()) {
+			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
+			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
+			}
+		} else if (cs.isFile() || cs.isSymlink()) {
+			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
+			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
+			}
+		}
+		row.add(Document.COLUMN_SIZE, cs.size);
+		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
+	}
+
 	public Cursor queryChildDocuments(String parentDocumentId,
 			String[] projection, String sortOrder)
 			throws FileNotFoundException {
@@ -280,69 +311,20 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				throw new FileNotFoundException(parentDocumentId + " not found");
 			}
 		});
-		CephStat cs = new CephStat();
 		for (String entry : res) {
-			Log.v(APP_NAME, "lstat " + parentDocumentId + " " + entry);
-			doCephOperation(() -> {
-				try {
-					cm.lstat(filename + "/" + entry, cs);
-					return null;
-				} catch (FileNotFoundException|CephNotDirectoryException e) {
-					Log.e(APP_NAME, "lstat: " + filename + "/" + entry + " not found");
-					throw new FileNotFoundException(parentDocumentId + "/" + entry + " not found");
-				}
-			});
-			MatrixCursor.RowBuilder row = result.newRow();
-			row.add(Document.COLUMN_DOCUMENT_ID, parentDocumentId + "/" + entry);
-			row.add(Document.COLUMN_DISPLAY_NAME, entry);
-			if (cs.isDir()) {
-				row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-				if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
-					row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
-				}
-			} else if (cs.isFile() || cs.isSymlink()) {
-				row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
-				if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
-					row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
-				}
-			}
-			row.add(Document.COLUMN_SIZE, cs.size);
-			row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
+			lstatBuildDocumentRow(filename + "/" + entry, entry,
+					parentDocumentId + "/" + entry, result);
 		}
 		return result;
 	}
 
 	public Cursor queryDocument(String documentId, String[] projection)
 			throws FileNotFoundException {
-		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
-		String filename = documentId.substring(documentId.indexOf("/") + 1);
-		CephStat cs = new CephStat();
 		Log.v(APP_NAME, "queryDocument " + documentId);
-		doCephOperation(() -> {
-			try {
-				cm.lstat(filename, cs);
-				return null;
-			} catch (FileNotFoundException|CephNotDirectoryException e) {
-				Log.e(APP_NAME, "lstat: " + filename + " not found");
-				throw new FileNotFoundException(documentId + " not found");
-			}
-		});
-		MatrixCursor.RowBuilder row = result.newRow();
-		row.add(Document.COLUMN_DOCUMENT_ID, documentId);
-		row.add(Document.COLUMN_DISPLAY_NAME, filename);
-		if (cs.isDir()) {
-			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
-				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
-			}
-		} else if (cs.isFile() || cs.isSymlink()) {
-			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
-			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
-				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
-			}
-		}
-		row.add(Document.COLUMN_SIZE, cs.size);
-		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
+		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
+		lstatBuildDocumentRow(documentId.substring(documentId.indexOf("/") + 1),
+				documentId.substring(documentId.lastIndexOf("/") + 1),
+				documentId, result);
 		return result;
 	}
 
