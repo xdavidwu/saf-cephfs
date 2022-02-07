@@ -300,7 +300,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 					row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 				}
-			} else if (cs.isFile()) {
+			} else if (cs.isFile() || cs.isSymlink()) {
 				row.add(Document.COLUMN_MIME_TYPE, getMime(entry));
 				if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 					row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
@@ -335,7 +335,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
-		} else if (cs.isFile()) {
+		} else if (cs.isFile() || cs.isSymlink()) {
 			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
 			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
