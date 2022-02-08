@@ -282,19 +282,32 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Document.COLUMN_DOCUMENT_ID, documentId);
 		row.add(Document.COLUMN_DISPLAY_NAME, displayName);
+		row.add(Document.COLUMN_SIZE, cs.size);
+		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
+		if (cs.isSymlink()) {
+			doCephOperation(() -> {
+				try {
+					cm.stat(filename, cs);
+					return null;
+				} catch (FileNotFoundException|CephNotDirectoryException e) {
+					Log.e(APP_NAME, "stat: " + filename + " not found");
+					return null;
+				}
+			});
+		}
 		if (cs.isDir()) {
 			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
-			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+			if (!checkPermissions ||
+					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
-		} else if (cs.isFile() || cs.isSymlink()) {
+		} else if (cs.isFile()) {
 			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
-			if (!checkPermissions || (getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+			if (!checkPermissions ||
+					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
 			}
 		}
-		row.add(Document.COLUMN_SIZE, cs.size);
-		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
 	}
 
 	public Cursor queryChildDocuments(String parentDocumentId,
