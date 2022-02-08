@@ -15,8 +15,8 @@
  */
 
 /*
- * Changed to remove Nullable annotation and make it under org.safcephfs
- * namespace.
+ * Changed to remove Nullable annotation, make it under org.safcephfs namespace
+ * and support whatever mimetype ExifInterface supports
  */
 
 package org.safcephfs;
@@ -217,7 +217,7 @@ public final class MetadataReader {
      * for the supplied mimetype.
      */
     public static boolean isSupportedMimeType(String mimeType) {
-        return JPG_MIME_TYPE.equals(mimeType) || JPEG_MIME_TYPE.equals(mimeType);
+        return ExifInterface.isSupportedMimeType(mimeType);
     }
 
     /**
@@ -244,7 +244,6 @@ public final class MetadataReader {
         metadata.putStringArray(DocumentsContract.METADATA_TYPES,
                 metadataTypes.toArray(new String[metadataTypes.size()]));
         // TODO: Add support for PDF and Video metadata
-        // TODO: Broaden image support to all images
     }
 
     /**
