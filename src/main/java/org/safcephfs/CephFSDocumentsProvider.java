@@ -11,6 +11,7 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
+import android.os.ParcelFileDescriptor.AutoCloseInputStream;
 import android.os.Process;
 import android.os.storage.StorageManager;
 import android.os.StrictMode;
@@ -339,11 +340,19 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
 		} else if (cs.isFile()) {
-			row.add(Document.COLUMN_MIME_TYPE, getMime(filename));
+			String mimeType = getMime(filename);
+			row.add(Document.COLUMN_MIME_TYPE, mimeType);
+			int flags = 0;
+			if (MetadataReader.isSupportedMimeType(mimeType) &&
+					(!checkPermissions ||
+					(getPerm(cs) & PERM_READABLE) == PERM_READABLE)) {
+				flags |= Document.FLAG_SUPPORTS_METADATA;
+			}
 			if (!checkPermissions ||
 					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
-				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
+				flags |= Document.FLAG_SUPPORTS_WRITE;
 			}
+			row.add(Document.COLUMN_FLAGS, flags);
 		} else if (cs.isSymlink()) {
 			row.add(Document.COLUMN_MIME_TYPE, "inode/symlink");
 		} else {
@@ -383,6 +392,27 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				documentId.substring(documentId.lastIndexOf("/") + 1),
 				documentId, result);
 		return result;
+	}
+
+	public Bundle getDocumentMetadata(String documentId)
+			throws FileNotFoundException {
+		Log.v(APP_NAME, "getDocumentMetadata " + documentId);
+		String mimeType = getDocumentType(documentId);
+		if (!MetadataReader.isSupportedMimeType(mimeType)) {
+			return null;
+		}
+
+		ParcelFileDescriptor fd = openDocument(documentId, "r", null);
+		AutoCloseInputStream stream = new AutoCloseInputStream(fd);
+
+		Bundle metadata = new Bundle();
+		try {
+			MetadataReader.getMetadata(metadata, stream, mimeType, null);
+		} catch (IOException e) {
+			Log.e(APP_NAME, "getMetadata: ", e);
+			return null;
+		}
+		return metadata;
 	}
 
 	public Cursor queryRoots(String[] projection)
