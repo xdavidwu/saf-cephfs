@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.MatrixCursor;
+import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -14,6 +15,7 @@ import android.os.Process;
 import android.os.storage.StorageManager;
 import android.os.StrictMode;
 import android.preference.PreferenceManager;
+import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
 import android.provider.DocumentsContract.Root;
 import android.provider.DocumentsProvider;
@@ -119,14 +121,29 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		T execute() throws IOException;
 	}
 
+	private void throwOrAddErrorExtra(String error, Cursor cursor) {
+		if (cursor != null) {
+			Bundle extra = new Bundle();
+			extra.putString(DocumentsContract.EXTRA_ERROR, error);
+			cursor.setExtras(extra);
+		} else {
+			toast(error);
+			throw new IllegalStateException(error);
+		}
+	}
+
 	private <T> T doCephOperation(CephOperation<T> op) {
+		return doCephOperation(op, null);
+	}
+
+	private <T> T doCephOperation(CephOperation<T> op, Cursor cursor) {
 		if (cm == null) {
 			try {
 				cm = setupCeph();
 			} catch (IOException e) {
-				String error = "Unable to mount root: " + e.toString();
-				toast(error);
-				throw new IllegalStateException(error);
+				throwOrAddErrorExtra("Unable to mount root: " + e.getMessage(),
+					cursor);
+				return null;
 			}
 		}
 		int r = retries;
@@ -147,14 +164,17 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 								}
 							}.execute();
 						} catch (IOException e2) {
-							toast("Unable to remount root: " + e2.toString());
+							toast("Unable to remount root: " + e2);
 						}
 					} else {
-						throw new IllegalStateException("ESHUTDOWN");
+						throwOrAddErrorExtra("Operation failed: " +
+							e.getMessage(), cursor);
+						return null;
 					}
 				} else {
-					toast("Operation failed: " + e.getMessage());
-					throw new IllegalStateException(e.getMessage());
+					throwOrAddErrorExtra("Operation failed: " + e.getMessage(),
+						cursor);
+					return null;
 				}
 			}
 		}
@@ -323,7 +343,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				Log.e(APP_NAME, "queryChildDocuments " + parentDocumentId + " not found");
 				throw new FileNotFoundException(parentDocumentId + " not found");
 			}
-		});
+		}, result);
+		if (res == null) {
+			return result;
+		}
 		for (String entry : res) {
 			lstatBuildDocumentRow(filename + "/" + entry, entry,
 					parentDocumentId + "/" + entry, result);
