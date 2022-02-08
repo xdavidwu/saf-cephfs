@@ -83,6 +83,23 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return "application/octet-stream";
 	}
 
+	private static final int S_IFMT = 0170000, S_IFSOCK = 0140000,
+		S_IFBLK = 0060000, S_IFCHR = 0020000, S_IFIFO = 0010000;
+
+	private static String getMimeFromMode(int mode) {
+		switch (mode & S_IFMT) {
+		case S_IFSOCK:
+			return "inode/socket";
+		case S_IFBLK:
+			return "inode/blockdevice";
+		case S_IFCHR:
+			return "inode/chardevice";
+		case S_IFIFO:
+			return "inode/fifo";
+		}
+		return "application/octet-stream";
+	}
+
 	private int getPerm(CephStat cs) {
 		int perm = 0;
 		if (cs.uid == uid) {
@@ -327,6 +344,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_SUPPORTS_WRITE);
 			}
+		} else if (cs.isSymlink()) {
+			row.add(Document.COLUMN_MIME_TYPE, "inode/symlink");
+		} else {
+			row.add(Document.COLUMN_MIME_TYPE, getMimeFromMode(cs.mode));
 		}
 	}
 
