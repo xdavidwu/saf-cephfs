@@ -343,7 +343,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			String mimeType = getMime(filename);
 			row.add(Document.COLUMN_MIME_TYPE, mimeType);
 			int flags = 0;
-			if (MetadataReader.isSupportedMimeType(mimeType) &&
+			if (MetadataReader.isSupportedMimeType(mimeType) ||
+					MediaMetadataReader.isSupportedMimeType(mimeType) &&
 					(!checkPermissions ||
 					(getPerm(cs) & PERM_READABLE) == PERM_READABLE)) {
 				flags |= Document.FLAG_SUPPORTS_METADATA;
@@ -398,21 +399,32 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throws FileNotFoundException {
 		Log.v(APP_NAME, "getDocumentMetadata " + documentId);
 		String mimeType = getDocumentType(documentId);
-		if (!MetadataReader.isSupportedMimeType(mimeType)) {
-			return null;
-		}
+		if (MetadataReader.isSupportedMimeType(mimeType)) {
+			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
+			AutoCloseInputStream stream = new AutoCloseInputStream(fd);
 
-		ParcelFileDescriptor fd = openDocument(documentId, "r", null);
-		AutoCloseInputStream stream = new AutoCloseInputStream(fd);
+			Bundle metadata = new Bundle();
+			try {
+				MetadataReader.getMetadata(metadata, stream, mimeType, null);
+			} catch (IOException e) {
+				Log.e(APP_NAME, "getMetadata: ", e);
+				return null;
+			}
+			return metadata;
+		} else if (MediaMetadataReader.isSupportedMimeType(mimeType)) {
+			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
 
-		Bundle metadata = new Bundle();
-		try {
-			MetadataReader.getMetadata(metadata, stream, mimeType, null);
-		} catch (IOException e) {
-			Log.e(APP_NAME, "getMetadata: ", e);
-			return null;
+			Bundle metadata = new Bundle();
+			MediaMetadataReader.getMetadata(metadata, fd.getFileDescriptor());
+			try {
+				fd.close();
+			} catch (IOException e) {
+				Log.e(APP_NAME, "getMetadata: video fd close: ", e);
+				return null;
+			}
+			return metadata;
 		}
-		return metadata;
+		return null;
 	}
 
 	public Cursor queryRoots(String[] projection)
