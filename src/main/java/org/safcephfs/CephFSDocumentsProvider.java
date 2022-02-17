@@ -415,7 +415,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
 
 			Bundle metadata = new Bundle();
-			MediaMetadataReader.getMetadata(metadata, fd.getFileDescriptor());
+			MediaMetadataReader.getMetadata(metadata, fd.getFileDescriptor(),
+				mimeType);
 			try {
 				fd.close();
 			} catch (IOException e) {
