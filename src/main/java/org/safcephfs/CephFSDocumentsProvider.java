@@ -212,6 +212,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		newMount.conf_set("mon_host", mon);
 		newMount.conf_set("key", key);
 		newMount.conf_set("client_mount_timeout", timeout);
+		newMount.conf_set("client_dirsize_rbytes", "false");
 		checkPermissions = settings.getBoolean("permissions", true);
 		if (!checkPermissions) {
 			newMount.conf_set("client_permissions", "false");
