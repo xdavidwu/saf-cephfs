@@ -1,6 +1,6 @@
 # saf-cephfs
 
-[WIP] Access CephFS from Android Storage Access Framework (SAF), with libcephfs-jni
+Access CephFS from Android Storage Access Framework (SAF), with libcephfs-jni
 
 Currently only for arm64-v8a
 
@@ -15,15 +15,6 @@ Native libraries bundled are built from:
 
 Java libraries com.ceph.\* is copied from Ceph 15.2.5 source code.
 
-## Current features
+## Status
 
-* Traverse the tree under specified path
-
-## Notes
-
-This is a WIP, and the code is dirty and full of debugging lines.
-Many things still don't work.
-
-### What's tested and worked so far
-
-* Listing files, changing directories
+Reads and writes works, but some DocumentsProvider features not yet implemented.
