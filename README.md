@@ -9,8 +9,8 @@ Currently only for arm64-v8a
 Native libraries bundled are built from:
 
 * libboost_\*.so: Archlinx User Repository (AUR) package `android-aarch64-boost` (1.76.0-1)
-* libcrypto\_1\_1.so: AUR package `android-aarch64-openssl` (1.1.1.p-1)
-* libc++\_shared.so: copied from NDK r24
+* libcrypto\_1\_1.so: AUR package `android-aarch64-openssl` (1.1.1.q-1)
+* libc++\_shared.so: copied from NDK r25.b
 * libcephfs.so, libceph-common.so, libcephfs\_jni.so: built from Ceph Quincy, see [COMPILING-CEPH.md](COMPILING-CEPH.md) for build instructions
 
 Java libraries com.ceph.\* is copied from Ceph 15.2.5 source code.
