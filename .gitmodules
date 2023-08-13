@@ -1,0 +1,3 @@
+[submodule "src/main/jni/ceph"]
+	path = src/main/jni/ceph
+	url = https://github.com/xdavidwu/ceph
