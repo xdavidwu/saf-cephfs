@@ -8,3 +8,5 @@ WORKDIR /build
 # XXX: use /etc/profile.d/*.sh instead?
 ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
+
+LABEL org.opencontainers.image.source=https://github.com/xdavidwu/saf-cephfs
