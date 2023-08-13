@@ -13,8 +13,6 @@ This project uses a few libraries from Archlinux User Repository (AUR):
 
 For exact tested version of those libraries, inspect the container mentioned below.
 
-Java libraries com.ceph.\* is copied from Ceph 15.2.5 source code.
-
 ## Build instructions
 
 The build currently needs libraries from AUR, thus an Archlinux environment is required. The environment used to build this project is packed from `Containerfile` and published as `ghcr.io/xdavidwu/saf-cephfs/build`.
