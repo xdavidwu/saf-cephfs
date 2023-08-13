@@ -6,14 +6,24 @@ Currently only for arm64-v8a
 
 ## Libraries sources
 
-Native libraries bundled are built from:
+This project uses a few libraries from Archlinux User Repository (AUR):
 
-* libboost_\*.so: Archlinx User Repository (AUR) package `android-aarch64-boost` (1.76.0-1)
-* libcrypto\_1\_1.so: AUR package `android-aarch64-openssl` (1.1.1.q-1)
-* libc++\_shared.so: copied from NDK r25.b
-* libcephfs.so, libceph-common.so, libcephfs\_jni.so: built from Ceph Quincy, see [COMPILING-CEPH.md](COMPILING-CEPH.md) for build instructions
+- android-aarch64-boost
+- android-aarch64-openssl
+
+For exact tested version of those libraries, inspect the container mentioned below.
 
 Java libraries com.ceph.\* is copied from Ceph 15.2.5 source code.
+
+## Build instructions
+
+The build currently needs libraries from AUR, thus an Archlinux environment is required. The environment used to build this project is packed from `Containerfile` and published as `ghcr.io/xdavidwu/saf-cephfs/build`.
+
+To build with the packed container environment:
+
+```
+podman run -v .:/build -v ~/.android:/root/.android ghcr.io/xdavidwu/saf-cephfs/build:latest ./gradlew assembleDebug
+```
 
 ## Status
 
