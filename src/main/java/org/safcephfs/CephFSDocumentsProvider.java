@@ -2,8 +2,10 @@ package org.safcephfs;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.database.MatrixCursor;
+import android.graphics.Point;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
@@ -26,6 +28,8 @@ import android.util.Log;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Vector;
 
 import com.ceph.fs.CephMount;
@@ -73,10 +77,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private static String getMime(String filename) {
 		int idx = filename.lastIndexOf(".");
 		if (idx > 0) {
-			String mime = MimeTypeMap.getSingleton()
-				.getMimeTypeFromExtension(
-					filename.substring(idx + 1).toLowerCase()
-				);
+			String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+				filename.substring(idx + 1).toLowerCase());
 			if (mime != null) {
 				return mime;
 			}
@@ -305,16 +307,42 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 	}
 
-	private void lstatBuildDocumentRow(String filename, String displayName,
+	private String getXDGThumbnailFilePath(String base, String name) {
+		MessageDigest md5;
+		try {
+			md5 = MessageDigest.getInstance("MD5");
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException();
+		}
+		md5.update(("./" + name).getBytes());
+		byte[] digest = md5.digest();
+		String hex = String.format("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7], digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]);
+
+		return base + ".sh_thumbnails/normal/" + hex + ".png";
+	}
+
+	@Override
+	public AssetFileDescriptor openDocumentThumbnail(String documentId,
+			Point sizeHint, CancellationSignal signal)
+			throws FileNotFoundException {
+		int dirIndex = documentId.lastIndexOf("/");
+		String filename = documentId.substring(dirIndex + 1);
+		String dir = documentId.substring(0, dirIndex + 1);
+		String id = getXDGThumbnailFilePath(dir, filename);
+		ParcelFileDescriptor fd = openDocument(id, "r", signal);
+		return new AssetFileDescriptor(fd, 0, fd.getStatSize());
+	}
+
+	private void lstatBuildDocumentRow(String dir, String displayName,
 			String documentId, MatrixCursor result)
 			throws FileNotFoundException {
 		CephStat cs = new CephStat();
 		doCephOperation(() -> {
 			try {
-				cm.lstat(filename, cs);
+				cm.lstat(dir + displayName, cs);
 				return null;
 			} catch (FileNotFoundException|CephNotDirectoryException e) {
-				Log.e(APP_NAME, "lstat: " + filename + " not found");
+				Log.e(APP_NAME, "lstat: " + dir + displayName + " not found");
 				throw new FileNotFoundException(documentId + " not found");
 			}
 		});
@@ -326,10 +354,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		if (cs.isSymlink()) {
 			doCephOperation(() -> {
 				try {
-					cm.stat(filename, cs);
+					cm.stat(dir + displayName, cs);
 					return null;
 				} catch (FileNotFoundException|CephNotDirectoryException e) {
-					Log.e(APP_NAME, "stat: " + filename + " not found");
+					Log.e(APP_NAME, "stat: " + dir + displayName + " not found");
 					return null;
 				}
 			});
@@ -341,7 +369,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
 		} else if (cs.isFile()) {
-			String mimeType = getMime(filename);
+			String mimeType = getMime(displayName);
 			row.add(Document.COLUMN_MIME_TYPE, mimeType);
 			int flags = 0;
 			if (MetadataReader.isSupportedMimeType(mimeType) ||
@@ -353,6 +381,19 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			if (!checkPermissions ||
 					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				flags |= Document.FLAG_SUPPORTS_WRITE;
+			}
+
+			String thubmailPath = getXDGThumbnailFilePath(dir, displayName);
+			boolean thumnailFound = doCephOperation(() -> {
+				try {
+					cm.stat(thubmailPath, cs);
+					return true;
+				} catch (FileNotFoundException|CephNotDirectoryException e) {
+					return false;
+				}
+			});
+			if (thumnailFound) {
+				flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 			}
 			row.add(Document.COLUMN_FLAGS, flags);
 		} else if (cs.isSymlink()) {
@@ -380,7 +421,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			return result;
 		}
 		for (String entry : res) {
-			lstatBuildDocumentRow(filename + "/" + entry, entry,
+			lstatBuildDocumentRow(filename + "/", entry,
 					parentDocumentId + "/" + entry, result);
 		}
 		return result;
@@ -390,8 +431,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throws FileNotFoundException {
 		Log.v(APP_NAME, "queryDocument " + documentId);
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
-		lstatBuildDocumentRow(documentId.substring(documentId.indexOf("/") + 1),
-				documentId.substring(documentId.lastIndexOf("/") + 1),
+		int dirIndex = documentId.lastIndexOf("/");
+		String filename = documentId.substring(dirIndex + 1);
+		String dir = documentId.substring(0, dirIndex + 1);
+		lstatBuildDocumentRow(dir.substring(dir.indexOf("/") + 1), filename,
 				documentId, result);
 		return result;
 	}
