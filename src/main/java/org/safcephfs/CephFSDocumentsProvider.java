@@ -307,7 +307,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 	}
 
-	private String getXDGThumbnailFilePath(String base, String name) {
+	private String getXDGThumbnailFile(String name) {
 		MessageDigest md5;
 		try {
 			md5 = MessageDigest.getInstance("MD5");
@@ -318,7 +318,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		byte[] digest = md5.digest();
 		String hex = String.format("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7], digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]);
 
-		return base + ".sh_thumbnails/normal/" + hex + ".png";
+		return hex + ".png";
 	}
 
 	@Override
@@ -328,13 +328,14 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		int dirIndex = documentId.lastIndexOf("/");
 		String filename = documentId.substring(dirIndex + 1);
 		String dir = documentId.substring(0, dirIndex + 1);
-		String id = getXDGThumbnailFilePath(dir, filename);
+		String id = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(filename);
 		ParcelFileDescriptor fd = openDocument(id, "r", signal);
 		return new AssetFileDescriptor(fd, 0, fd.getStatSize());
 	}
 
+	// TODO bsearch thumbnails
 	private void lstatBuildDocumentRow(String dir, String displayName,
-			String documentId, MatrixCursor result)
+			String documentId, String[] thumbnails, MatrixCursor result)
 			throws FileNotFoundException {
 		CephStat cs = new CephStat();
 		doCephOperation(() -> {
@@ -383,16 +384,28 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				flags |= Document.FLAG_SUPPORTS_WRITE;
 			}
 
-			String thubmailPath = getXDGThumbnailFilePath(dir, displayName);
-			boolean thumnailFound = doCephOperation(() -> {
-				try {
-					cm.stat(thubmailPath, cs);
-					return true;
-				} catch (FileNotFoundException|CephNotDirectoryException e) {
-					return false;
+			String thumbnail = getXDGThumbnailFile(displayName);
+			boolean thumbnailFound = false;
+			if (thumbnails != null) {
+				for (String c : thumbnails) {
+					if (c.equals(thumbnail)) {
+						thumbnailFound = true;
+						break;
+					}
 				}
-			});
-			if (thumnailFound) {
+			} else {
+				String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
+				thumbnailFound = doCephOperation(() -> {
+					try {
+						cm.stat(thubmailPath, cs);
+						return true;
+					} catch (FileNotFoundException|CephNotDirectoryException e) {
+						return false;
+					}
+				});
+			}
+
+			if (thumbnailFound) {
 				flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 			}
 			row.add(Document.COLUMN_FLAGS, flags);
@@ -420,9 +433,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		if (res == null) {
 			return result;
 		}
+		String[] thumbnails = doCephOperation(() -> {
+			try {
+				return cm.listdir(filename + "/.sh_thumbnails/normal");
+			} catch (FileNotFoundException e) {
+				return new String[0];
+			}
+		}, result);
 		for (String entry : res) {
 			lstatBuildDocumentRow(filename + "/", entry,
-					parentDocumentId + "/" + entry, result);
+					parentDocumentId + "/" + entry, thumbnails, result);
 		}
 		return result;
 	}
@@ -435,7 +455,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String filename = documentId.substring(dirIndex + 1);
 		String dir = documentId.substring(0, dirIndex + 1);
 		lstatBuildDocumentRow(dir.substring(dir.indexOf("/") + 1), filename,
-				documentId, result);
+				documentId, null, result);
 		return result;
 	}
 
