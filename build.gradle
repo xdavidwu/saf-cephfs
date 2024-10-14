@@ -43,7 +43,7 @@ android {
 			// agp weirdness: specify version to use system cmake
 			// https://developer.android.com/reference/tools/gradle-api/8.1/com/android/build/api/dsl/Cmake#version()
 			// TODO: use cmake from android-sdk?
-			version '3.27.1'
+			version '3.30.5'
 		}
 	}
 
