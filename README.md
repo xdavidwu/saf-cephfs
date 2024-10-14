@@ -8,7 +8,6 @@ Currently only for arm64-v8a
 
 This project uses a few libraries from Archlinux User Repository (AUR):
 
-- android-aarch64-boost
 - android-aarch64-openssl
 
 For exact tested version of those libraries, inspect the container mentioned below.
