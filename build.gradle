@@ -9,6 +9,11 @@ buildscript {
 }
 apply plugin: 'com.android.application'
 
+// for lint target
+repositories {
+	mavenCentral()
+}
+
 android {
 	namespace 'org.safcephfs'
 	compileSdkVersion 'android-33'
