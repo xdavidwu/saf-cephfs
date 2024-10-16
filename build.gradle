@@ -52,6 +52,11 @@ android {
 			version '3.30.5'
 		}
 	}
+
+	compileOptions {
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
+	}
 }
 
 allprojects {

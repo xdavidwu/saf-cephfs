@@ -75,7 +75,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private static String APP_NAME;
 
-	private static String getMime(String filename) {
+	private static String getMimeFromName(String filename) {
 		int idx = filename.lastIndexOf(".");
 		if (idx > 0) {
 			String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
@@ -88,20 +88,20 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	}
 
 	private static final int S_IFMT = 0170000, S_IFSOCK = 0140000,
-		S_IFBLK = 0060000, S_IFCHR = 0020000, S_IFIFO = 0010000;
+		S_IFLNK = 0120000, S_IFREG = 0100000, S_IFBLK = 0060000,
+		S_IFDIR = 0040000, S_IFCHR = 0020000, S_IFIFO = 0010000;
 
-	private static String getMimeFromMode(int mode) {
-		switch (mode & S_IFMT) {
-		case S_IFSOCK:
-			return "inode/socket";
-		case S_IFBLK:
-			return "inode/blockdevice";
-		case S_IFCHR:
-			return "inode/chardevice";
-		case S_IFIFO:
-			return "inode/fifo";
-		}
-		return "application/octet-stream";
+	private static String getMime(int mode, String name) {
+		return switch (mode & S_IFMT) {
+		case S_IFSOCK -> "inode/socket";
+		case S_IFLNK -> "inode/symlink";
+		case S_IFREG -> getMimeFromName(name);
+		case S_IFBLK -> "inode/blockdevice";
+		case S_IFDIR -> Document.MIME_TYPE_DIR;
+		case S_IFCHR -> "inode/chardevice";
+		case S_IFIFO -> "inode/fifo";
+		default -> "application/octet-stream";
+		};
 	}
 
 	private int getPerm(CephStat cs) {
@@ -353,6 +353,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Document.COLUMN_DISPLAY_NAME, displayName);
 		row.add(Document.COLUMN_SIZE, cs.size);
 		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
+
 		if (cs.isSymlink()) {
 			doCephOperation(() -> {
 				try {
@@ -364,15 +365,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				}
 			});
 		}
+		String mimeType = getMime(cs.mode, displayName);
+		row.add(Document.COLUMN_MIME_TYPE, mimeType);
+
 		if (cs.isDir()) {
-			row.add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR);
 			if (!checkPermissions ||
 					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
 		} else if (cs.isFile()) {
-			String mimeType = getMime(displayName);
-			row.add(Document.COLUMN_MIME_TYPE, mimeType);
 			int flags = 0;
 			if (MetadataReader.isSupportedMimeType(mimeType) ||
 					MediaMetadataReader.isSupportedMimeType(mimeType) &&
@@ -411,10 +412,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 			}
 			row.add(Document.COLUMN_FLAGS, flags);
-		} else if (cs.isSymlink()) {
-			row.add(Document.COLUMN_MIME_TYPE, "inode/symlink");
-		} else {
-			row.add(Document.COLUMN_MIME_TYPE, getMimeFromMode(cs.mode));
 		}
 	}
 
