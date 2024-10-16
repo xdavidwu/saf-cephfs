@@ -23,6 +23,7 @@ package org.safcephfs;
 
 import android.media.ExifInterface;
 import android.provider.DocumentsContract;
+import android.os.Build;
 import android.os.Bundle;
 
 import java.io.IOException;
@@ -217,7 +218,11 @@ public final class MetadataReader {
      * for the supplied mimetype.
      */
     public static boolean isSupportedMimeType(String mimeType) {
-        return ExifInterface.isSupportedMimeType(mimeType);
+        if (Build.VERSION.SDK_INT >= 30) {
+            return ExifInterface.isSupportedMimeType(mimeType);
+        } else {
+            return JPG_MIME_TYPE.equals(mimeType) || JPEG_MIME_TYPE.equals(mimeType);
+        }
     }
 
     /**
