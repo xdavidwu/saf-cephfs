@@ -70,9 +70,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Document.COLUMN_FLAGS
 	};
 
-	private static int PERM_READABLE = 1;
-	private static int PERM_WRITEABLE = 2;
-
 	private static String APP_NAME;
 
 	private static String getMimeFromName(String filename) {
@@ -104,31 +101,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		};
 	}
 
+	private static int S_IR = 4, S_IW = 2, S_IX = 1;
+
 	private int getPerm(CephStat cs) {
-		int perm = 0;
-		if (cs.uid == uid) {
-			if ((cs.mode & 0400) == 0400) {
-				perm |= PERM_READABLE;
-			}
-			if ((cs.mode & 0200) == 0200) {
-				perm |= PERM_WRITEABLE;
-			}
-		} else if (cs.gid == uid) {
-			if ((cs.mode & 0040) == 0040) {
-				perm |= PERM_READABLE;
-			}
-			if ((cs.mode & 0020) == 0020) {
-				perm |= PERM_WRITEABLE;
-			}
-		} else {
-			if ((cs.mode & 0004) == 0004) {
-				perm |= PERM_READABLE;
-			}
-			if ((cs.mode & 0002) == 0002) {
-				perm |= PERM_WRITEABLE;
-			}
-		}
-		return perm;
+		return (cs.uid == uid ? cs.mode >> 6 :
+				cs.gid == uid ? cs.mode >> 3 : cs.mode) & 7;
 	}
 
 	private void toast(String message) {
@@ -370,7 +347,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 		if (cs.isDir()) {
 			if (!checkPermissions ||
-					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+					(getPerm(cs) & S_IW) == S_IW) {
 				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
 			}
 		} else if (cs.isFile()) {
@@ -378,12 +355,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			if (MetadataReader.isSupportedMimeType(mimeType) ||
 					MediaMetadataReader.isSupportedMimeType(mimeType) &&
 					(!checkPermissions ||
-					(getPerm(cs) & PERM_READABLE) == PERM_READABLE)) {
+					(getPerm(cs) & S_IR) == S_IR)) {
 				// noinspection InlinedApi
 				flags |= Document.FLAG_SUPPORTS_METADATA;
 			}
 			if (!checkPermissions ||
-					(getPerm(cs) & PERM_WRITEABLE) == PERM_WRITEABLE) {
+					(getPerm(cs) & S_IW) == S_IW) {
 				flags |= Document.FLAG_SUPPORTS_WRITE;
 			}
 
