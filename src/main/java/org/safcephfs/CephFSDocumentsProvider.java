@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Vector;
+import java.util.Locale;
 
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
@@ -78,7 +79,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		int idx = filename.lastIndexOf(".");
 		if (idx > 0) {
 			String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
-				filename.substring(idx + 1).toLowerCase());
+				filename.substring(idx + 1).toLowerCase(Locale.ROOT));
 			if (mime != null) {
 				return mime;
 			}
@@ -377,6 +378,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					MediaMetadataReader.isSupportedMimeType(mimeType) &&
 					(!checkPermissions ||
 					(getPerm(cs) & PERM_READABLE) == PERM_READABLE)) {
+				// noinspection InlinedApi
 				flags |= Document.FLAG_SUPPORTS_METADATA;
 			}
 			if (!checkPermissions ||
