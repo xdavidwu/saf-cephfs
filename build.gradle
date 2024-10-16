@@ -12,7 +12,7 @@ apply plugin: 'com.android.application'
 android {
 	namespace 'org.safcephfs'
 	compileSdkVersion 'android-33'
-	buildToolsVersion '33'
+	buildToolsVersion '34'
 	ndkPath '/opt/android-ndk'
 	ndkVersion '27.0.12077973'
 
