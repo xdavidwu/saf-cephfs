@@ -6,6 +6,7 @@ import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.graphics.Point;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
@@ -48,8 +49,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private ToastThread lthread;
 
 	private boolean checkPermissions = true;
-
-	private static final int retries = 2;
 
 	private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
 		Root.COLUMN_ROOT_ID,
@@ -172,8 +171,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	public String createDocument(String parentDocumentId, String mimeType,
 			String displayName) throws FileNotFoundException {
 		Log.v(APP_NAME, "createDocument " + parentDocumentId + " " + mimeType + " " + displayName);
-		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1)
-				+ "/" + displayName;
+		var path = Uri.parse(parentDocumentId).getPath();
+		String filename = path + "/" + displayName;
 		if (mimeType.equals(Document.MIME_TYPE_DIR)) {
 			CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
 				cm.mkdir(filename, 0700);
@@ -186,7 +185,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				return null;
 			}));
 		}
-		return parentDocumentId + "/" + displayName;
+		return parentDocumentId + "/" + filename;
 	}
 
 	public boolean isChildDocument(String parentDocumentId, String documentId) {
@@ -199,6 +198,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throws UnsupportedOperationException,
 			FileNotFoundException {
 		Log.v(APP_NAME, "openDocument " + mode + " " + documentId);
+		var path = Uri.parse(documentId).getPath();
 		int flag, fdmode;
 		switch (mode) {
 		case "r":
@@ -217,9 +217,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throw new UnsupportedOperationException("Mode " + mode + " not implemented");
 		}
 
-		String filename = documentId.substring(documentId.indexOf("/") + 1);
 		int fd = CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
-			return cm.open(filename, flag, 0);
+			return cm.open(path, flag, 0);
 		}));
 
 		try {
@@ -340,11 +339,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	public Cursor queryChildDocuments(String parentDocumentId,
 			String[] projection, String sortOrder)
 			throws FileNotFoundException {
+		var path = Uri.parse(parentDocumentId).getPath();
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		Log.v(APP_NAME, "queryChildDocuments " + parentDocumentId);
-		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1);
 		String[] res = CephFSOperations.translateToCursorExtra(withLazyRetriedMount(() -> {
-			return cm.listdir(filename);
+			return cm.listdir(path);
 		}), result);
 		if (res == null) {
 			return result;
@@ -353,7 +352,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		// TODO make this not fatal instead?
 		String[] thumbnails = CephFSOperations.translateToCursorExtra(withLazyRetriedMount(() -> {
 			try {
-				return cm.listdir(filename + "/.sh_thumbnails/normal");
+				return cm.listdir(path + "/.sh_thumbnails/normal");
 			} catch (FileNotFoundException e) {
 				return new String[0];
 			}
@@ -363,8 +362,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 
 		for (String entry : res) {
-			lstatBuildDocumentRow(filename + "/", entry,
-					parentDocumentId + "/" + entry, thumbnails, result);
+			lstatBuildDocumentRow(path + "/", entry, parentDocumentId + "/" + entry,
+				thumbnails, result);
 		}
 		return result;
 	}
@@ -372,12 +371,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	public Cursor queryDocument(String documentId, String[] projection)
 			throws FileNotFoundException {
 		Log.v(APP_NAME, "queryDocument " + documentId);
+		var path = Uri.parse(documentId).getPath();
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
-		int dirIndex = documentId.lastIndexOf("/");
-		String filename = documentId.substring(dirIndex + 1);
-		String dir = documentId.substring(0, dirIndex + 1);
-		lstatBuildDocumentRow(dir.substring(dir.indexOf("/") + 1), filename,
-				documentId, null, result);
+		int dirIndex = path.lastIndexOf("/");
+		String filename = path.substring(dirIndex + 1);
+		String dir = path.substring(0, dirIndex + 1);
+		lstatBuildDocumentRow(dir, filename, documentId, null, result);
 		return result;
 	}
 
@@ -423,12 +422,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 		CephStatVFS csvfs = new CephStatVFS();
 		CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
-			cm.statfs("/", csvfs);
+			cm.statfs(".", csvfs);
 			return null;
 		}));
+
+		var builder = new Uri.Builder();
+		var rootUri = builder.scheme("cephfs").authority(id + "@" + mon).build();
 		MatrixCursor.RowBuilder row = result.newRow();
-		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
-		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
+		row.add(Root.COLUMN_ROOT_ID, rootUri);
+		row.add(Root.COLUMN_DOCUMENT_ID, rootUri);
 		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_IS_CHILD);
 		row.add(Root.COLUMN_TITLE, mon + ":" + path);
 		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);

@@ -128,6 +128,7 @@ public class CephFSOperations {
 	protected static <T> T translateToUnchecked(Operation<T> op) {
 		try {
 			return op.execute();
+		// TODO preserve IOE subclasses
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
