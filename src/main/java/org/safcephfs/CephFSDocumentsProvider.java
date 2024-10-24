@@ -28,6 +28,7 @@ import android.util.Log;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Vector;
@@ -114,72 +115,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		lthread.handler.sendMessage(msg);
 	}
 
-	// Wrapper to make IOException from JNI catchable
-	private interface CephOperation<T> {
-		T execute() throws IOException;
-	}
-
-	private void throwOrAddErrorExtra(String error, Cursor cursor) {
-		if (cursor != null) {
-			Bundle extra = new Bundle();
-			extra.putString(DocumentsContract.EXTRA_ERROR, error);
-			cursor.setExtras(extra);
-		} else {
-			toast(error);
-			throw new IllegalStateException(error);
-		}
-	}
-
-	private <T> T doCephOperation(CephOperation<T> op) {
-		return doCephOperation(op, null);
-	}
-
-	private <T> T doCephOperation(CephOperation<T> op, Cursor cursor) {
-		if (cm == null) {
-			try {
-				cm = setupCeph();
-			} catch (IOException e) {
-				throwOrAddErrorExtra("Unable to mount root: " + e.getMessage(),
-					cursor);
-				return null;
-			}
-		}
-		int r = retries;
-		while (r-- != 0) {
-			try {
-				return op.execute();
-			} catch (IOException e) {
-				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
-					if (r != 0) {
-						Log.e(APP_NAME, "Mount died, " + r + "attempts remaining, retrying");
-						cm.unmount();
-						try {
-							new CephOperation<Void>() {
-								@Override
-								public Void execute() throws IOException {
-									cm.mount(path);
-									return null;
-								}
-							}.execute();
-						} catch (IOException e2) {
-							toast("Unable to remount root: " + e2);
-						}
-					} else {
-						throwOrAddErrorExtra("Operation failed: " +
-							e.getMessage(), cursor);
-						return null;
-					}
-				} else {
-					throwOrAddErrorExtra("Operation failed: " + e.getMessage(),
-						cursor);
-					return null;
-				}
-			}
-		}
-		return null;
-	}
-
-	private CephMount setupCeph() throws IOException {
+	private CephFSOperations.Operation<CephMount> setupMount = () -> {
 		SharedPreferences settings = PreferenceManager
 			.getDefaultSharedPreferences(getContext());
 		mon = settings.getString("mon", "");
@@ -199,6 +135,24 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 		newMount.mount(path); // IOException if fails
 		return newMount;
+	};
+
+	// TODO refactor to a executor, and port to CephFSProxyFileDescriptorCallback
+	private <T> CephFSOperations.Operation<T> withLazyRetriedMount(
+			CephFSOperations.Operation<T> op) {
+		return () -> {
+			if (cm == null) {
+				cm = setupMount.execute();
+			}
+			return CephFSOperations.retryOnESHUTDOWN(
+				() -> {
+					cm.unmount();
+					Log.e(APP_NAME, "Mount died, retrying");
+					cm = setupMount.execute();
+					return null;
+				},
+				op).execute();
+		};
 	}
 
 	@Override
@@ -221,21 +175,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1)
 				+ "/" + displayName;
 		if (mimeType.equals(Document.MIME_TYPE_DIR)) {
-			doCephOperation(() -> {
+			CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
 				cm.mkdir(filename, 0700);
 				return null;
-			});
+			}));
 		} else {
-			doCephOperation(() -> {
-				try {
-					int fd = cm.open(filename, CephMount.O_WRONLY | CephMount.O_CREAT | CephMount.O_EXCL, 0700);
-					cm.close(fd);
-					return null;
-				} catch (FileNotFoundException e) {
-					Log.e(APP_NAME, "Create " + filename + " not found");
-					throw new FileNotFoundException(parentDocumentId + " not found");
-				}
-			});
+			CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
+				int fd = cm.open(filename, CephMount.O_WRONLY | CephMount.O_CREAT | CephMount.O_EXCL, 0700);
+				cm.close(fd);
+				return null;
+			}));
 		}
 		return parentDocumentId + "/" + displayName;
 	}
@@ -267,21 +216,17 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		default:
 			throw new UnsupportedOperationException("Mode " + mode + " not implemented");
 		}
+
 		String filename = documentId.substring(documentId.indexOf("/") + 1);
-		int fd = doCephOperation(() -> {
-			try {
-				return cm.open(filename, flag, 0);
-			} catch (FileNotFoundException e) {
-				Log.e(APP_NAME, "Open " + documentId + " not found");
-				throw new FileNotFoundException(documentId + "not found");
-			}
-		});
+		int fd = CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
+			return cm.open(filename, flag, 0);
+		}));
+
 		try {
-			return sm.openProxyFileDescriptor(fdmode,
-					new CephFSProxyFileDescriptorCallback(cm, fd),
-					ioHandler);
+			return sm.openProxyFileDescriptor(
+				fdmode, new CephFSProxyFileDescriptorCallback(cm, fd), ioHandler);
 		} catch (IOException e) {
-			throw new IllegalStateException("openProxyFileDescriptor: " + e.toString());
+			throw new UncheckedIOException(e);
 		}
 	}
 
@@ -290,7 +235,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		try {
 			md5 = MessageDigest.getInstance("MD5");
 		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException();
+			throw new IllegalStateException(e);
 		}
 		md5.update(("./" + name).getBytes());
 		byte[] digest = md5.digest();
@@ -315,16 +260,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private void lstatBuildDocumentRow(String dir, String displayName,
 			String documentId, String[] thumbnails, MatrixCursor result)
 			throws FileNotFoundException {
+		// TODO consider EXTRA_ERROR?
 		CephStat cs = new CephStat();
-		doCephOperation(() -> {
+		CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
 			try {
 				cm.lstat(dir + displayName, cs);
 				return null;
-			} catch (FileNotFoundException|CephNotDirectoryException e) {
-				Log.e(APP_NAME, "lstat: " + dir + displayName + " not found");
-				throw new FileNotFoundException(documentId + " not found");
+			} catch (CephNotDirectoryException e) {
+				throw new FileNotFoundException(e.getMessage());
 			}
-		});
+		}));
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Document.COLUMN_DOCUMENT_ID, documentId);
 		row.add(Document.COLUMN_DISPLAY_NAME, displayName);
@@ -332,15 +277,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
 
 		if (cs.isSymlink()) {
-			doCephOperation(() -> {
+			CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
 				try {
 					cm.stat(dir + displayName, cs);
 					return null;
 				} catch (FileNotFoundException|CephNotDirectoryException e) {
-					Log.e(APP_NAME, "stat: " + dir + displayName + " not found");
+					Log.e(APP_NAME, "stat: " + dir + displayName + " not found", e);
 					return null;
 				}
-			});
+			}));
 		}
 		String mimeType = getMime(cs.mode, displayName);
 		row.add(Document.COLUMN_MIME_TYPE, mimeType);
@@ -375,14 +320,14 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				}
 			} else {
 				String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
-				thumbnailFound = doCephOperation(() -> {
+				thumbnailFound = CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
 					try {
 						cm.stat(thubmailPath, cs);
 						return true;
 					} catch (FileNotFoundException|CephNotDirectoryException e) {
 						return false;
 					}
-				});
+				}));
 			}
 
 			if (thumbnailFound) {
@@ -398,24 +343,25 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
 		Log.v(APP_NAME, "queryChildDocuments " + parentDocumentId);
 		String filename = parentDocumentId.substring(parentDocumentId.indexOf("/") + 1);
-		String[] res = doCephOperation(() -> {
-			try {
-				return cm.listdir(filename);
-			} catch (FileNotFoundException e) {
-				Log.e(APP_NAME, "queryChildDocuments " + parentDocumentId + " not found");
-				throw new FileNotFoundException(parentDocumentId + " not found");
-			}
-		}, result);
+		String[] res = CephFSOperations.translateToCursorExtra(withLazyRetriedMount(() -> {
+			return cm.listdir(filename);
+		}), result);
 		if (res == null) {
 			return result;
 		}
-		String[] thumbnails = doCephOperation(() -> {
+
+		// TODO make this not fatal instead?
+		String[] thumbnails = CephFSOperations.translateToCursorExtra(withLazyRetriedMount(() -> {
 			try {
 				return cm.listdir(filename + "/.sh_thumbnails/normal");
 			} catch (FileNotFoundException e) {
 				return new String[0];
 			}
-		}, result);
+		}), result);
+		if (res == null) {
+			return result;
+		}
+
 		for (String entry : res) {
 			lstatBuildDocumentRow(filename + "/", entry,
 					parentDocumentId + "/" + entry, thumbnails, result);
@@ -476,14 +422,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			cm = null;
 		}
 		CephStatVFS csvfs = new CephStatVFS();
-		doCephOperation(() -> {
-			try {
-				cm.statfs("/", csvfs);
-				return null;
-			} catch (FileNotFoundException e) {
-				throw new FileNotFoundException("/ not found");
-			}
-		});
+		CephFSOperations.translateToUnchecked(withLazyRetriedMount(() -> {
+			cm.statfs("/", csvfs);
+			return null;
+		}));
 		MatrixCursor.RowBuilder row = result.newRow();
 		row.add(Root.COLUMN_ROOT_ID, id + "@" + mon + ":" + path);
 		row.add(Root.COLUMN_DOCUMENT_ID, "root/");
