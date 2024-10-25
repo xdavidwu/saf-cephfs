@@ -1,6 +1,7 @@
 package org.safcephfs;
 
 import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
 import android.system.ErrnoException;
@@ -8,11 +9,46 @@ import android.system.OsConstants;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Map;
 
-public class CephFSOperations {
-	protected interface Operation<T> {
-		T execute() throws IOException;
+import com.ceph.fs.CephMount;
+
+public class CephFSExecutor {
+	protected record CephMountConfig(
+			String id, String path, Map<String, String> config) {
+
+		protected String getRootUri() {
+			var builder = new Uri.Builder();
+			var uri = builder.scheme("cephfs").authority(id + "@" + config.get("mon_host")).build();
+			return uri.toString();
+		}
+
+		protected String getTitle() {
+			return config.get("mon_host") + ":" + path;
+		}
+
+		protected String getSummary() {
+			return "CephFS with user: " + id;
+		}
 	}
+
+	protected CephMountConfig config;
+	private CephMount cm;
+
+	protected CephFSExecutor(CephMountConfig config) {
+		this.config = config;
+	}
+
+	protected interface Operation<T> {
+		T execute(CephMount cm) throws IOException;
+	}
+
+	protected Operation<CephMount> mount = unused -> {
+		CephMount m = new CephMount(config.id);
+		config.config.forEach((k, v) -> m.conf_set(k, v));
+		m.mount(config.path);
+		return m;
+	};
 
 	/*
 	 * libcephfs_jni throws IOException with message from strerror()
@@ -105,18 +141,36 @@ public class CephFSOperations {
 		};
 	}
 
-	protected static <T> T translateToErrnoException(
+	protected <T> T execute(Operation<T> op) throws IOException {
+		if (cm == null) {
+			cm = this.mount.execute(null);
+		}
+		try {
+			return op.execute(cm);
+		} catch (IOException e) {
+			// ESHUTDOWN
+			if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
+				cm.unmount();
+				cm = this.mount.execute(null);
+				return op.execute(cm);
+			} else {
+				throw e;
+			}
+		}
+	}
+
+	protected <T> T executeWithErrnoException(
 			String functionName, Operation<T> op) throws ErrnoException {
 		try {
-			return op.execute();
+			return execute(op);
 		} catch (IOException e) {
 			throw new ErrnoException(functionName, cephIOEToOsConstants(e));
 		}
 	}
 
-	protected static <T> T translateToCursorExtra(Operation<T> op, Cursor c) {
+	protected <T> T executeWithCursorExtra(Operation<T> op, Cursor c) {
 		try {
-			return op.execute();
+			return execute(op);
 		} catch (IOException e) {
 			var extra = new Bundle();
 			extra.putString(DocumentsContract.EXTRA_ERROR, e.getMessage());
@@ -125,28 +179,12 @@ public class CephFSOperations {
 		}
 	}
 
-	protected static <T> T translateToUnchecked(Operation<T> op) {
+	protected <T> T executeWithUnchecked(Operation<T> op) {
 		try {
-			return op.execute();
+			return execute(op);
 		// TODO preserve IOE subclasses
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
-	}
-
-	protected static <T> Operation<T> retryOnESHUTDOWN(
-			Operation<Object> setup, Operation<T> op) {
-		return () -> {
-			try {
-				return op.execute();
-			} catch (IOException e) {
-				if (e.getMessage().equals("Cannot send after transport endpoint shutdown")) {
-					setup.execute();
-					return op.execute();
-				} else {
-					throw e;
-				}
-			}
-		};
 	}
 }

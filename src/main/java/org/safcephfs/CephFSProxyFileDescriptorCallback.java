@@ -10,18 +10,38 @@ import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
 
 public class CephFSProxyFileDescriptorCallback extends ProxyFileDescriptorCallback {
+	private CephFSExecutor executor;
 	private CephMount cm;
-	private int fd;
+	private String path;
+	private int fd, mode;
 
-	public CephFSProxyFileDescriptorCallback(CephMount cm, int fd) {
+	public CephFSProxyFileDescriptorCallback(
+			CephFSExecutor executor, CephMount cm, int fd,
+			String path, int mode) {
 		this.cm = cm;
 		this.fd = fd;
+		this.executor = executor;
+		this.path = path;
+		this.mode = mode;
 	}
+
+	private <T> CephFSExecutor.Operation<T> reopenIfNeeded(
+			CephFSExecutor.Operation<T> op) {
+		return cm -> {
+			if (cm != this.cm) {
+				fd = cm.open(path, mode, 0);
+				this.cm = cm;
+			};
+			return op.execute(cm);
+		};
+	};
 
 	@Override
 	public void onFsync() throws ErrnoException {
-		CephFSOperations.translateToErrnoException("fsync", () -> {
-			cm.fsync(fd, false);
+		executor.executeWithErrnoException("fsync", cm -> {
+			if (cm == this.cm) {
+				cm.fsync(fd, false);
+			}
 			return null;
 		});
 	}
@@ -29,19 +49,19 @@ public class CephFSProxyFileDescriptorCallback extends ProxyFileDescriptorCallba
 	@Override
 	public long onGetSize() throws ErrnoException {
 		CephStat cs = new CephStat();
-		CephFSOperations.translateToErrnoException("fstat", () -> {
+		executor.executeWithErrnoException("fstat", reopenIfNeeded(cm -> {
 			cm.fstat(fd, cs);
 			return null;
-		});
+		}));
 		return cs.size;
 	}
 
 	@Override
 	public int onRead(long offset, int size, byte[] data)
 		throws ErrnoException {
-		return CephFSOperations.translateToErrnoException("read", () -> {
+		return executor.executeWithErrnoException("read", reopenIfNeeded(cm -> {
 			return cm.read(fd, data, size, offset);
-		}).intValue();
+		})).intValue();
 	}
 
 	@Override
@@ -52,8 +72,8 @@ public class CephFSProxyFileDescriptorCallback extends ProxyFileDescriptorCallba
 	@Override
 	public int onWrite(long offset, int size, byte[] data)
 		throws ErrnoException {
-		return CephFSOperations.translateToErrnoException("write", () -> {
+		return executor.executeWithErrnoException("write", reopenIfNeeded(cm -> {
 			return cm.write(fd, data, size, offset);
-		}).intValue();
+		})).intValue();
 	}
 }
