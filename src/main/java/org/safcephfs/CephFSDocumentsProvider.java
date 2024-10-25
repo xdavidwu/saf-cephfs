@@ -333,16 +333,17 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			return result;
 		}
 
-		// TODO make this not fatal instead?
-		String[] thumbnails = executor.executeWithCursorExtra(cm -> {
-			try {
-				return cm.listdir(path + "/.sh_thumbnails/normal");
-			} catch (FileNotFoundException e) {
-				return new String[0];
-			}
-		}, result);
-		if (thumbnails == null) {
-			return result;
+		String[] thumbnails = null;
+		try {
+			thumbnails = executor.execute(cm -> {
+				try {
+					return cm.listdir(path + "/.sh_thumbnails/normal");
+				} catch (FileNotFoundException e) {
+					return new String[0];
+				}
+			});
+		} catch (IOException e) {
+			Log.w("Fail to list thumbnails directory, falling back to per-file slow path", e);
 		}
 
 		for (String entry : res) {
