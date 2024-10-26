@@ -132,7 +132,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			var path = sp.getString("path", "");
 			var timeout = sp.getString("timeout", "");
 			timeout = timeout.matches("\\d+") ? timeout : "20";
-			var checkPermissions = sp.getBoolean("permissions", true);
+			checkPermissions = sp.getBoolean("permissions", true);
 			var config = new HashMap<String, String>();
 
 			config.put("mon_host", sp.getString("mon", ""));
