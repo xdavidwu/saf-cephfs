@@ -273,11 +273,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String mimeType = getMime(cs.mode, displayName);
 		row.add(Document.COLUMN_MIME_TYPE, mimeType);
 
+		// TODO override getDocumentType to avoid this
 		if (cs.isDir()) {
-			if (!checkPermissions ||
-					(getPerm(cs) & S_IW) == S_IW) {
-				row.add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE);
+			int flags = 0;
+			if (!checkPermissions || (getPerm(cs) & S_IW) == S_IW) {
+				flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
 			}
+			if (!checkPermissions || (getPerm(cs) & S_IR) == S_IR) {
+				flags |= Document.FLAG_SUPPORTS_METADATA;
+			}
+			row.add(Document.COLUMN_FLAGS, flags);
 		} else if (cs.isFile()) {
 			int flags = 0;
 			if (MetadataReader.isSupportedMimeType(mimeType) ||
@@ -365,6 +370,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return result;
 	}
 
+	private long getXattrULL(String path, String name) {
+		var buf = new byte[32];
+		var l = executor.executeWithUnchecked(cm -> {
+			return cm.getxattr(path, name, buf);
+		}).intValue();
+		var s = new String(buf, 0, l);
+		return Long.parseUnsignedLong(s);
+	}
+
 	public Bundle getDocumentMetadata(String documentId)
 			throws FileNotFoundException {
 		Log.v(APP_NAME, "getDocumentMetadata " + documentId);
@@ -382,13 +396,22 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			}
 			return metadata;
 		} else if (MediaMetadataReader.isSupportedMimeType(mimeType)) {
-
 			Bundle metadata = new Bundle();
 			try (var fd = new UncheckedAutoCloseable<ParcelFileDescriptor>(
 						openDocument(documentId, "r", null))){
 				MediaMetadataReader.getMetadata(metadata,
 					fd.c().getFileDescriptor(), mimeType);
 			}
+			return metadata;
+		} else if (mimeType.equals(Document.MIME_TYPE_DIR)) {
+			// DocumentsUI does not show this though
+			var metadata = new Bundle();
+			var path = Uri.parse(documentId).getPath();
+
+			metadata.putLong(DocumentsContract.METADATA_TREE_COUNT,
+				getXattrULL(path, "ceph.dir.rentries"));
+			metadata.putLong(DocumentsContract.METADATA_TREE_SIZE,
+				getXattrULL(path, "ceph.dir.rbytes"));
 			return metadata;
 		}
 		return null;
