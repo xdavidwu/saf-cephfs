@@ -102,9 +102,18 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private static int S_IR = 4, S_IW = 2, S_IX = 1;
 
-	private int getPerm(CephStat cs) {
-		return (cs.uid == uid ? cs.mode >> 6 :
+	private int getPermissions(CephStat cs) {
+		return (!checkPermissions ? 7 :
+				cs.uid == uid ? cs.mode >> 6 :
 				cs.gid == uid ? cs.mode >> 3 : cs.mode) & 7;
+	}
+
+	private boolean mayRead(CephStat cs) {
+		return (getPermissions(cs) & S_IR) == S_IR;
+	}
+
+	private boolean mayWrite(CephStat cs) {
+		return (getPermissions(cs) & S_IW) == S_IW;
 	}
 
 	private void toast(String message) {
@@ -276,24 +285,22 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		// TODO override getDocumentType to avoid this
 		if (cs.isDir()) {
 			int flags = 0;
-			if (!checkPermissions || (getPerm(cs) & S_IW) == S_IW) {
+			if (mayWrite(cs)) {
 				flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
 			}
-			if (!checkPermissions || (getPerm(cs) & S_IR) == S_IR) {
+			if (mayRead(cs)) {
 				flags |= Document.FLAG_SUPPORTS_METADATA;
 			}
 			row.add(Document.COLUMN_FLAGS, flags);
 		} else if (cs.isFile()) {
 			int flags = 0;
-			if (MetadataReader.isSupportedMimeType(mimeType) ||
-					MediaMetadataReader.isSupportedMimeType(mimeType) &&
-					(!checkPermissions ||
-					(getPerm(cs) & S_IR) == S_IR)) {
+			if ((MetadataReader.isSupportedMimeType(mimeType) ||
+					MediaMetadataReader.isSupportedMimeType(mimeType)) &&
+					mayRead(cs)) {
 				// noinspection InlinedApi
 				flags |= Document.FLAG_SUPPORTS_METADATA;
 			}
-			if (!checkPermissions ||
-					(getPerm(cs) & S_IW) == S_IW) {
+			if (mayWrite(cs)) {
 				flags |= Document.FLAG_SUPPORTS_WRITE;
 			}
 
