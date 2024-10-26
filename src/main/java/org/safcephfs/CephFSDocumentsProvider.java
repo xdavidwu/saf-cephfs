@@ -371,27 +371,23 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String mimeType = getDocumentType(documentId);
 		if (MetadataReader.isSupportedMimeType(mimeType)) {
 			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
-			AutoCloseInputStream stream = new AutoCloseInputStream(fd);
-
 			Bundle metadata = new Bundle();
-			try {
-				MetadataReader.getMetadata(metadata, stream, mimeType, null);
+
+			try (var stream = new UncheckedAutoCloseable<AutoCloseInputStream>(
+						new AutoCloseInputStream(fd))) {
+				MetadataReader.getMetadata(metadata, stream.c(), mimeType, null);
 			} catch (IOException e) {
 				Log.e(APP_NAME, "getMetadata: ", e);
 				return null;
 			}
 			return metadata;
 		} else if (MediaMetadataReader.isSupportedMimeType(mimeType)) {
-			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
 
 			Bundle metadata = new Bundle();
-			MediaMetadataReader.getMetadata(metadata, fd.getFileDescriptor(),
-				mimeType);
-			try {
-				fd.close();
-			} catch (IOException e) {
-				Log.e(APP_NAME, "getMetadata: video fd close: ", e);
-				return null;
+			try (var fd = new UncheckedAutoCloseable<ParcelFileDescriptor>(
+						openDocument(documentId, "r", null))){
+				MediaMetadataReader.getMetadata(metadata,
+					fd.c().getFileDescriptor(), mimeType);
 			}
 			return metadata;
 		}

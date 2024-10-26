@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.provider.DocumentsContract;
 
 import java.io.FileDescriptor;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -68,23 +69,26 @@ public final class MediaMetadataReader {
 			return;
 		}
 		Bundle typeSpecificMetadata = new Bundle();
-		MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-		retriever.setDataSource(fd);
 
-		for (int key: nameMapping.keySet()) {
-			String raw = retriever.extractMetadata(key);
-			if (raw == null) {
-				continue;
-			}
+		try (var retriever = new UncheckedAutoCloseable<MediaMetadataRetriever>(
+					new MediaMetadataRetriever())) {
+			retriever.c().setDataSource(fd);
 
-			Integer type = TYPE_MAPPING.get(key);
-			if (type == null) {
-				typeSpecificMetadata.putString(nameMapping.get(key), raw);
-			} else {
-				switch (type) {
-				case TYPE_INT:
-					typeSpecificMetadata.putInt(nameMapping.get(key), Integer.parseInt(raw));
-					break;
+			for (int key: nameMapping.keySet()) {
+				String raw = retriever.c().extractMetadata(key);
+				if (raw == null) {
+					continue;
+				}
+
+				Integer type = TYPE_MAPPING.get(key);
+				if (type == null) {
+					typeSpecificMetadata.putString(nameMapping.get(key), raw);
+				} else {
+					switch (type) {
+					case TYPE_INT:
+						typeSpecificMetadata.putInt(nameMapping.get(key), Integer.parseInt(raw));
+						break;
+					}
 				}
 			}
 		}
