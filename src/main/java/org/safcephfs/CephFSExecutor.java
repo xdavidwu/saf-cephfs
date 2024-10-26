@@ -173,7 +173,9 @@ public class CephFSExecutor {
 			return execute(op);
 		} catch (IOException e) {
 			var extra = new Bundle();
-			extra.putString(DocumentsContract.EXTRA_ERROR, e.getMessage());
+			var msg = e.getMessage();
+			extra.putString(DocumentsContract.EXTRA_ERROR,
+				(msg != null && msg.length() != 0) ? msg : e.getClass().getName());
 			c.setExtras(extra);
 			return null;
 		}
