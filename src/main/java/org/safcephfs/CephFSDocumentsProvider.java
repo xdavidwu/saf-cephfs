@@ -68,6 +68,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Document.COLUMN_SIZE,
 		Document.COLUMN_FLAGS,
 		Document.COLUMN_SUMMARY,
+		Document.COLUMN_ICON,
 	};
 
 	private static String APP_NAME;
@@ -290,6 +291,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			flags |= Document.FLAG_PARTIAL;
 			var target = executor.executeWithUnchecked(cm -> cm.readlink(dir + displayName));
 			row.add(Document.COLUMN_SUMMARY, "Broken symlink to " + target);
+			row.add(Document.COLUMN_ICON, R.drawable.ic_broken_symlink);
 		} if (cs.isDir()) {
 			if (mayWrite(cs)) {
 				flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
