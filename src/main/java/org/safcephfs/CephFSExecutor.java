@@ -7,6 +7,7 @@ import android.provider.DocumentsContract;
 import android.system.ErrnoException;
 import android.system.OsConstants;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
@@ -168,9 +169,12 @@ public class CephFSExecutor {
 		}
 	}
 
-	protected <T> T executeWithCursorExtra(Operation<T> op, Cursor c) {
+	protected <T> T executeWithCursorExtra(Operation<T> op, Cursor c)
+			throws FileNotFoundException {
 		try {
 			return execute(op);
+		} catch (FileNotFoundException e) {
+			throw e;
 		} catch (IOException e) {
 			var extra = new Bundle();
 			var msg = e.getMessage();
@@ -181,10 +185,12 @@ public class CephFSExecutor {
 		}
 	}
 
-	protected <T> T executeWithUnchecked(Operation<T> op) {
+	protected <T> T executeWithUnchecked(Operation<T> op)
+			throws FileNotFoundException {
 		try {
 			return execute(op);
-		// TODO preserve IOE subclasses
+		} catch (FileNotFoundException e) {
+			throw e;
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}

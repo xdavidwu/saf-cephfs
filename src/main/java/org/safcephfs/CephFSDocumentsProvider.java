@@ -377,7 +377,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return result;
 	}
 
-	private long getXattrULL(String path, String name) {
+	private long getXattrULL(String path, String name)
+			throws FileNotFoundException {
 		var buf = new byte[32];
 		var l = executor.executeWithUnchecked(cm -> {
 			return cm.getxattr(path, name, buf);
