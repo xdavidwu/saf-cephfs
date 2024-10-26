@@ -10,6 +10,7 @@ import java.io.FileDescriptor;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public final class MediaMetadataReader {
 	private static final Map<Integer, String> NAME_MAPPING_VIDEO = new HashMap<>();
@@ -40,6 +41,11 @@ public final class MediaMetadataReader {
 
 	public static final String METADATA_KEY_VIDEO = "android.media.metadata.video";
 	public static final String METADATA_KEY_AUDIO = "android.media.metadata.audio";
+	public static final String METADATA_VIDEO_LATITUDE = "android.media.metadata.video:latitude";
+	public static final String METADATA_VIDEO_LONGITUTE = "android.media.metadata.video:longitude";
+
+	// group 1, 3
+	private static final Pattern iso6709d = Pattern.compile("^([+-]\\d\\d(\\.\\d+)?)([+-]\\d\\d\\d(\\.\\d+)?)");
 
 	public static boolean isSupportedMimeType(String mimeType) {
 		return isSupportedVideoMimeType(mimeType) ||
@@ -53,6 +59,22 @@ public final class MediaMetadataReader {
 
 	private static boolean isSupportedAudioMimeType(String mimeType) {
 		return mimeType.startsWith("audio/");
+	}
+
+	private static float[] parseISO6709(String s) {
+		var dMatcher = iso6709d.matcher(s);
+		if (dMatcher.find()) {
+			try {
+				return new float[] {
+					Float.parseFloat(dMatcher.group(1)),
+					Float.parseFloat(dMatcher.group(3)),
+				};
+			} catch (NumberFormatException e) {
+				return null;
+			}
+		}
+		// TODO min and sec?
+		return null;
 	}
 
 	public static void getMetadata(Bundle metadata, FileDescriptor fd,
@@ -89,6 +111,17 @@ public final class MediaMetadataReader {
 						typeSpecificMetadata.putInt(nameMapping.get(key), Integer.parseInt(raw));
 						break;
 					}
+				}
+			}
+
+			String iso6709 = retriever.c().extractMetadata(
+				MediaMetadataRetriever.METADATA_KEY_LOCATION);
+			if (iso6709 != null) {
+				var latlng = parseISO6709(iso6709);
+				if (latlng != null) {
+					// XXX DocumentsUI does not use address locator a la with exif
+					typeSpecificMetadata.putFloat(METADATA_VIDEO_LATITUDE, latlng[0]);
+					typeSpecificMetadata.putFloat(METADATA_VIDEO_LONGITUTE, latlng[1]);
 				}
 			}
 		}
