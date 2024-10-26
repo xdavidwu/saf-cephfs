@@ -270,7 +270,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Document.COLUMN_SIZE, cs.size);
 		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
 
-		if (cs.isSymlink()) {
+		var wasSymlink = cs.isSymlink();
+		if (wasSymlink) {
 			executor.executeWithUnchecked(cm -> {
 				try {
 					cm.stat(dir + displayName, cs);
@@ -298,6 +299,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			}
 			if (mayRead(cs)) {
 				flags |= Document.FLAG_SUPPORTS_METADATA;
+			}
+			if (wasSymlink) {
+				// DocumentsUI grid view is hard-coded to system folder icon
+				row.add(Document.COLUMN_ICON, R.drawable.ic_symlink_to_dir);
 			}
 		} else if (cs.isFile()) {
 			if ((MetadataReader.isSupportedMimeType(mimeType) ||
