@@ -66,7 +66,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Document.COLUMN_MIME_TYPE,
 		Document.COLUMN_LAST_MODIFIED,
 		Document.COLUMN_SIZE,
-		Document.COLUMN_FLAGS
+		Document.COLUMN_FLAGS,
+		Document.COLUMN_SUMMARY,
 	};
 
 	private static String APP_NAME;
@@ -283,17 +284,20 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Document.COLUMN_MIME_TYPE, mimeType);
 
 		// TODO override getDocumentType to avoid this
-		if (cs.isDir()) {
-			int flags = 0;
+		int flags = 0;
+		if (cs.isSymlink()) { // broken
+			// needed for DocumentsUI to display summary
+			flags |= Document.FLAG_PARTIAL;
+			var target = executor.executeWithUnchecked(cm -> cm.readlink(dir + displayName));
+			row.add(Document.COLUMN_SUMMARY, "Broken symlink to " + target);
+		} if (cs.isDir()) {
 			if (mayWrite(cs)) {
 				flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
 			}
 			if (mayRead(cs)) {
 				flags |= Document.FLAG_SUPPORTS_METADATA;
 			}
-			row.add(Document.COLUMN_FLAGS, flags);
 		} else if (cs.isFile()) {
-			int flags = 0;
 			if ((MetadataReader.isSupportedMimeType(mimeType) ||
 					MediaMetadataReader.isSupportedMimeType(mimeType)) &&
 					mayRead(cs)) {
@@ -328,8 +332,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			if (thumbnailFound) {
 				flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 			}
-			row.add(Document.COLUMN_FLAGS, flags);
 		}
+		row.add(Document.COLUMN_FLAGS, flags);
 	}
 
 	public Cursor queryChildDocuments(String parentDocumentId,
