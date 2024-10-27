@@ -33,7 +33,6 @@ import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
-import java.util.Locale;
 
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
@@ -77,7 +76,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		int idx = filename.lastIndexOf(".");
 		if (idx > 0) {
 			String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
-				filename.substring(idx + 1).toLowerCase(Locale.ROOT));
+				filename.substring(idx + 1));
 			if (mime != null) {
 				return mime;
 			}
