@@ -55,7 +55,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Root.COLUMN_ICON,
 		Root.COLUMN_TITLE,
 		Root.COLUMN_DOCUMENT_ID,
-		Root.COLUMN_SUMMARY,
 		Root.COLUMN_CAPACITY_BYTES,
 		Root.COLUMN_AVAILABLE_BYTES
 	};
@@ -478,7 +477,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_IS_CHILD);
 		row.add(Root.COLUMN_TITLE, executor.config.getTitle());
 		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);
-		row.add(Root.COLUMN_SUMMARY, executor.config.getSummary());
+		// DocumentsUI shows localized and humanized COLUMN_AVAILABLE_BYTES
+		// when summary is not present, which is more useful and nicer
+		// row.add(Root.COLUMN_SUMMARY, executor.config.getSummary());
 		row.add(Root.COLUMN_CAPACITY_BYTES, csvfs.blocks * csvfs.frsize);
 		row.add(Root.COLUMN_AVAILABLE_BYTES, csvfs.bavail * csvfs.frsize);
 		return result;
