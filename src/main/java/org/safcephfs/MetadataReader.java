@@ -15,8 +15,9 @@
  */
 
 /*
- * Changed to remove Nullable annotation, make it under org.safcephfs namespace
- * and support whatever mimetype ExifInterface supports
+ * Changed to remove Nullable annotation, make it under org.safcephfs namespace,
+ * support whatever mimetype ExifInterface supports, default to extract all
+ * recognized tags
  */
 
 package org.safcephfs;
@@ -44,25 +45,7 @@ public final class MetadataReader {
 
     private MetadataReader() {}
 
-    private static final String[] DEFAULT_EXIF_TAGS = {
-            ExifInterface.TAG_APERTURE,
-            ExifInterface.TAG_COPYRIGHT,
-            ExifInterface.TAG_DATETIME,
-            ExifInterface.TAG_EXPOSURE_TIME,
-            ExifInterface.TAG_FOCAL_LENGTH,
-            ExifInterface.TAG_F_NUMBER,
-            ExifInterface.TAG_GPS_LATITUDE,
-            ExifInterface.TAG_GPS_LATITUDE_REF,
-            ExifInterface.TAG_GPS_LONGITUDE,
-            ExifInterface.TAG_GPS_LONGITUDE_REF,
-            ExifInterface.TAG_IMAGE_LENGTH,
-            ExifInterface.TAG_IMAGE_WIDTH,
-            ExifInterface.TAG_ISO_SPEED_RATINGS,
-            ExifInterface.TAG_MAKE,
-            ExifInterface.TAG_MODEL,
-            ExifInterface.TAG_ORIENTATION,
-            ExifInterface.TAG_SHUTTER_SPEED_VALUE,
-    };
+    private static final String[] DEFAULT_EXIF_TAGS;
 
     private static final int TYPE_INT = 0;
     private static final int TYPE_DOUBLE = 1;
@@ -208,6 +191,8 @@ public final class MetadataReader {
         TYPE_MAPPING.put(ExifInterface.TAG_RW2_SENSOR_RIGHT_BORDER, TYPE_INT);
         TYPE_MAPPING.put(ExifInterface.TAG_RW2_SENSOR_TOP_BORDER, TYPE_INT);
         TYPE_MAPPING.put(ExifInterface.TAG_RW2_ISO, TYPE_INT);
+
+        DEFAULT_EXIF_TAGS = TYPE_MAPPING.keySet().toArray(new String[0]);
     }
     private static final String JPG_MIME_TYPE = "image/jpg";
     private static final String JPEG_MIME_TYPE = "image/jpeg";
