@@ -6,6 +6,7 @@ import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.graphics.Point;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.CancellationSignal;
@@ -245,8 +246,29 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String filename = documentId.substring(dirIndex + 1);
 		String dir = documentId.substring(0, dirIndex + 1);
 		String id = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(filename);
-		ParcelFileDescriptor fd = openDocument(id, "r", signal);
-		return new AssetFileDescriptor(fd, 0, fd.getStatSize());
+		try {
+			ParcelFileDescriptor fd = openDocument(id, "r", signal);
+			return new AssetFileDescriptor(fd, 0, fd.getStatSize());
+		} catch (FileNotFoundException e) {
+		}
+
+		if (ExifInterface.isSupportedMimeType(getDocumentType(documentId))) {
+			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
+
+			var stream = new AutoCloseInputStream(fd);
+
+			try {
+				var exif = new ExifInterface(stream);
+				var range = exif.getThumbnailRange();
+				if (range != null) {
+					return new AssetFileDescriptor(fd, range[0], range[1]);
+				}
+				stream.close();
+			} catch (IOException e) {
+			}
+		}
+
+		throw new FileNotFoundException();
 	}
 
 	// TODO bsearch thumbnails
@@ -314,29 +336,34 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				flags |= Document.FLAG_SUPPORTS_WRITE;
 			}
 
-			String thumbnail = getXDGThumbnailFile(displayName);
-			boolean thumbnailFound = false;
-			if (thumbnails != null) {
-				for (String c : thumbnails) {
-					if (c.equals(thumbnail)) {
-						thumbnailFound = true;
-						break;
-					}
-				}
-			} else {
-				String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
-				thumbnailFound = executor.executeWithUnchecked(cm -> {
-					try {
-						cm.stat(thubmailPath, cs);
-						return true;
-					} catch (FileNotFoundException|CephNotDirectoryException e) {
-						return false;
-					}
-				});
-			}
-
-			if (thumbnailFound) {
+			if (ExifInterface.isSupportedMimeType(mimeType)) {
+				// may be available in exif, skip the search (but prefer xdg)
 				flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
+			} else {
+				String thumbnail = getXDGThumbnailFile(displayName);
+				boolean thumbnailFound = false;
+				if (thumbnails != null) {
+					for (String c : thumbnails) {
+						if (c.equals(thumbnail)) {
+							thumbnailFound = true;
+							break;
+						}
+					}
+				} else {
+					String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
+					thumbnailFound = executor.executeWithUnchecked(cm -> {
+						try {
+							cm.stat(thubmailPath, cs);
+							return true;
+						} catch (FileNotFoundException|CephNotDirectoryException e) {
+							return false;
+						}
+					});
+				}
+
+				if (thumbnailFound) {
+					flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
+				}
 			}
 		}
 		row.add(Document.COLUMN_FLAGS, flags);
