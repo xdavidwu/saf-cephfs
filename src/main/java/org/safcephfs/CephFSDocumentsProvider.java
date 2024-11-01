@@ -219,6 +219,20 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			AUTHORITY, toParentDocumentId(documentId)), null, 0);
 	}
 
+	public String renameDocument(String documentId, String displayName)
+			throws FileNotFoundException {
+		var fromPath = pathFromDocumentId(documentId);
+		var parentDocumentId = toParentDocumentId(documentId);
+		var toPath = pathFromDocumentId(parentDocumentId) + "/" + displayName;
+		executor.executeWithUnchecked(cm -> {
+			cm.rename(fromPath, toPath);
+			return null;
+		});
+		cr.notifyChange(DocumentsContract.buildChildDocumentsUri(
+			AUTHORITY, parentDocumentId), null, 0);
+		return documentIdFromPath(toPath);
+	}
+
 	public boolean isChildDocument(String parentDocumentId, String documentId) {
 		return documentId.startsWith(parentDocumentId) &&
 			documentId.charAt(parentDocumentId.length()) == '/';
@@ -409,6 +423,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				// TODO support recur
 				if (mayWrite(parentStat) && !lcs.isDir()) {
 					flags |= Document.FLAG_SUPPORTS_DELETE;
+				}
+				if (mayWrite(parentStat)) {
+					flags |= Document.FLAG_SUPPORTS_RENAME;
 				}
 				yield flags;
 			}
