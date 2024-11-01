@@ -1,5 +1,6 @@
 package org.safcephfs;
 
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.AssetFileDescriptor;
@@ -41,6 +42,7 @@ import com.ceph.fs.CephStatVFS;
 import com.ceph.fs.CephNotDirectoryException;
 
 public class CephFSDocumentsProvider extends DocumentsProvider {
+	private ContentResolver cr;
 	private StorageManager sm;
 	private Handler ioHandler;
 	private CephFSExecutor executor;
@@ -48,6 +50,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private ToastThread lthread;
 
 	private boolean checkPermissions = true;
+
+	private static final String AUTHORITY = "org.safcephfs";
 
 	private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
 		Root.COLUMN_ROOT_ID,
@@ -131,11 +135,22 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return executor.config.getRootUri().buildUpon().path(path).build().toString();
 	}
 
+	private String toParentDocumentId(String documentId) {
+		var uri = Uri.parse(documentId);
+		var segments = uri.getPathSegments();
+		var builder = uri.buildUpon().path("/");
+		for (var seg : segments.subList(0, segments.size() - 1)) {
+			builder.appendPath(seg);
+		}
+		return builder.build().toString();
+	}
+
 	@Override
 	public boolean onCreate() {
 		APP_NAME = getContext().getString(R.string.app_name);
 		sm = (StorageManager) getContext()
 			.getSystemService(Context.STORAGE_SERVICE);
+		cr = getContext().getContentResolver();
 		lthread = new ToastThread(getContext());
 		lthread.start();
 		HandlerThread ioThread = new HandlerThread("IO thread");
@@ -200,6 +215,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			cm.unlink(path);
 			return null;
 		});
+		cr.notifyChange(DocumentsContract.buildChildDocumentsUri(
+			AUTHORITY, toParentDocumentId(documentId)), null, 0);
 	}
 
 	public boolean isChildDocument(String parentDocumentId, String documentId) {
@@ -424,7 +441,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			String[] projection, String sortOrder)
 			throws FileNotFoundException {
 		var path = pathFromDocumentId(parentDocumentId);
-		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
+		MatrixCursor result = new MatrixCursor(
+			projection != null ? projection : DEFAULT_DOC_PROJECTION);
+		result.setNotificationUri(cr, DocumentsContract.buildChildDocumentsUri(
+			AUTHORITY, parentDocumentId));
 		Log.v(APP_NAME, "queryChildDocuments " + parentDocumentId);
 		String[] res = executor.executeWithCursorExtra(cm -> {
 			return cm.listdir(path);
