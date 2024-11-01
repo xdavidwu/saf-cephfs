@@ -183,7 +183,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				return null;
 			});
 		}
-		return parentDocumentId + "/" + filename;
+		return parentDocumentId + "/" + displayName;
 	}
 
 	public boolean isChildDocument(String parentDocumentId, String documentId) {
