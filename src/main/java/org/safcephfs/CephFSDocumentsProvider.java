@@ -433,6 +433,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			return result;
 		}
 
+		var cs = executor.executeWithCursorExtra(cm -> {
+			var st = new CephStat();
+			cm.stat(path, st);
+			return st;
+		}, result);
+		if (cs == null) {
+			return result;
+		}
+
 		String[] thumbnails = null;
 		try {
 			thumbnails = executor.execute(cm -> {
@@ -447,7 +456,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 
 		for (String entry : res) {
-			buildDocumentRow(path + "/", entry, result, thumbnails, null);
+			buildDocumentRow(path + "/", entry, result, thumbnails, cs);
 		}
 		return result;
 	}
