@@ -18,10 +18,10 @@ public class CephFSExecutor {
 	protected record CephMountConfig(
 			String id, String path, Map<String, String> config) {
 
-		protected String getRootUri() {
+		protected Uri getRootUri() {
 			var builder = new Uri.Builder();
 			var uri = builder.scheme("cephfs").authority(id + "@" + config.get("mon_host")).build();
-			return uri.toString();
+			return uri;
 		}
 
 		protected String getTitle() {
