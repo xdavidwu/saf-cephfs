@@ -443,6 +443,21 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return result;
 	}
 
+	// default implementation query without projection, which is costly
+	// TODO try to upstream the idea?
+	public String getDocumentType(String documentId)
+			throws FileNotFoundException {
+		try (var c = new UncheckedAutoCloseable<Cursor>(queryDocument(
+				documentId, new String[]{Document.COLUMN_MIME_TYPE}))) {
+			if (c.c().moveToFirst()) {
+				return c.c().getString(
+					c.c().getColumnIndexOrThrow(Document.COLUMN_MIME_TYPE));
+			} else {
+				return null;
+			}
+		}
+	}
+
 	private long getXattrULL(String path, String name)
 			throws FileNotFoundException {
 		var buf = new byte[32];
