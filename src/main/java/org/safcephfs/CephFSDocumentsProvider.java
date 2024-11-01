@@ -193,6 +193,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return documentIdFromPath(path);
 	}
 
+	public void deleteDocument(String documentId) throws FileNotFoundException {
+		Log.v(APP_NAME, "deleteDocument " + documentId);
+		var path = pathFromDocumentId(documentId);
+		executor.executeWithUnchecked(cm -> {
+			cm.unlink(path);
+			return null;
+		});
+	}
+
 	public boolean isChildDocument(String parentDocumentId, String documentId) {
 		return documentId.startsWith(parentDocumentId) &&
 			documentId.charAt(parentDocumentId.length()) == '/';
@@ -279,7 +288,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	}
 
 	private void buildDocumentRow(String dir, String displayName,
-			String[] thumbnails, MatrixCursor result)
+			MatrixCursor result, String[] thumbnails, CephStat parentStat)
 			throws FileNotFoundException {
 		// TODO consider EXTRA_ERROR?
 		var path = dir + displayName;
@@ -372,6 +381,18 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					}
 					break;
 				}
+
+				if (parentStat == null) {
+					parentStat = executor.executeWithUnchecked(cm -> {
+						var st = new CephStat();
+						cm.stat(dir, st);
+						return st;
+					});
+				}
+				// TODO support recur
+				if (mayWrite(parentStat) && !lcs.isDir()) {
+					flags |= Document.FLAG_SUPPORTS_DELETE;
+				}
 				yield flags;
 			}
 			case Document.COLUMN_ICON -> {
@@ -426,7 +447,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 
 		for (String entry : res) {
-			buildDocumentRow(path + "/", entry, thumbnails, result);
+			buildDocumentRow(path + "/", entry, result, thumbnails, null);
 		}
 		return result;
 	}
@@ -439,7 +460,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		int dirIndex = path.lastIndexOf("/");
 		String filename = path.substring(dirIndex + 1);
 		String dir = path.substring(0, dirIndex + 1);
-		buildDocumentRow(dir, filename, null, result);
+		buildDocumentRow(dir, filename, result, null, null);
 		return result;
 	}
 
