@@ -278,103 +278,125 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		throw new FileNotFoundException();
 	}
 
-	// TODO bsearch thumbnails
-	private void lstatBuildDocumentRow(String dir, String displayName,
+	private void buildDocumentRow(String dir, String displayName,
 			String[] thumbnails, MatrixCursor result)
 			throws FileNotFoundException {
 		// TODO consider EXTRA_ERROR?
 		var path = dir + displayName;
-		CephStat cs = new CephStat();
+		CephStat lcs = new CephStat();
 		executor.executeWithUnchecked(cm -> {
 			try {
-				cm.lstat(path, cs);
+				cm.lstat(path, lcs);
 				return null;
 			} catch (CephNotDirectoryException e) {
 				throw new FileNotFoundException(e.getMessage());
 			}
 		});
 		MatrixCursor.RowBuilder row = result.newRow();
-		row.add(Document.COLUMN_DOCUMENT_ID, documentIdFromPath(path));
-		row.add(Document.COLUMN_DISPLAY_NAME, displayName);
-		row.add(Document.COLUMN_SIZE, cs.size);
-		row.add(Document.COLUMN_LAST_MODIFIED, cs.m_time);
 
-		var wasSymlink = cs.isSymlink();
+		var wasSymlink = lcs.isSymlink();
+		CephStat cs = lcs;
 		if (wasSymlink) {
-			executor.executeWithUnchecked(cm -> {
+			cs = executor.executeWithUnchecked(cm -> {
 				try {
-					cm.stat(path, cs);
-					return null;
+					var ncs = new CephStat();
+					cm.stat(path, ncs);
+					return ncs;
 				} catch (FileNotFoundException|CephNotDirectoryException e) {
 					Log.e(APP_NAME, "stat: " + dir + displayName + " not found", e);
-					return null;
+					return lcs;
 				}
 			});
 		}
 		String mimeType = getMime(cs.mode, displayName);
-		row.add(Document.COLUMN_MIME_TYPE, mimeType);
 
-		// TODO override getDocumentType to avoid this
-		int flags = 0;
-		if (cs.isSymlink()) { // broken
-			// needed for DocumentsUI to display summary
-			flags |= Document.FLAG_PARTIAL;
-			var target = executor.executeWithUnchecked(cm -> cm.readlink(path));
-			row.add(Document.COLUMN_SUMMARY, "Broken symlink to " + target);
-			row.add(Document.COLUMN_ICON, R.drawable.ic_broken_symlink);
-		} if (cs.isDir()) {
-			if (mayWrite(cs)) {
-				flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
-			}
-			if (mayRead(cs)) {
-				flags |= Document.FLAG_SUPPORTS_METADATA;
-			}
-			if (wasSymlink) {
-				// DocumentsUI grid view is hard-coded to system folder icon
-				row.add(Document.COLUMN_ICON, R.drawable.ic_symlink_to_dir);
-			}
-		} else if (cs.isFile()) {
-			if ((MetadataReader.isSupportedMimeType(mimeType) ||
-					MediaMetadataReader.isSupportedMimeType(mimeType)) &&
-					mayRead(cs)) {
-				// noinspection InlinedApi
-				flags |= Document.FLAG_SUPPORTS_METADATA;
-			}
-			if (mayWrite(cs)) {
-				flags |= Document.FLAG_SUPPORTS_WRITE;
-			}
+		for (var col : result.getColumnNames()) {
+			row.add(col, switch (col) {
+			case Document.COLUMN_DISPLAY_NAME -> displayName;
+			case Document.COLUMN_DOCUMENT_ID -> documentIdFromPath(path);
+			case Document.COLUMN_FLAGS -> {
+				int flags = 0;
+				switch (cs.mode & S_IFMT) {
+				case S_IFLNK:
+					flags |= Document.FLAG_PARTIAL;
+					break;
+				case S_IFDIR:
+					if (mayWrite(cs)) {
+						flags |= Document.FLAG_DIR_SUPPORTS_CREATE;
+					}
+					if (mayRead(cs)) {
+						flags |= Document.FLAG_SUPPORTS_METADATA;
+					}
+					break;
+				case S_IFREG:
+					if ((MetadataReader.isSupportedMimeType(mimeType) ||
+							MediaMetadataReader.isSupportedMimeType(mimeType)) &&
+							mayRead(cs)) {
+						// noinspection InlinedApi
+						flags |= Document.FLAG_SUPPORTS_METADATA;
+					}
+					if (mayWrite(cs)) {
+						flags |= Document.FLAG_SUPPORTS_WRITE;
+					}
 
-			if (ExifInterface.isSupportedMimeType(mimeType)) {
-				// may be available in exif, skip the search (but prefer xdg)
-				flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
-			} else {
-				String thumbnail = getXDGThumbnailFile(displayName);
-				boolean thumbnailFound = false;
-				if (thumbnails != null) {
-					for (String c : thumbnails) {
-						if (c.equals(thumbnail)) {
-							thumbnailFound = true;
-							break;
+					if (ExifInterface.isSupportedMimeType(mimeType)) {
+						// may be available in exif, skip the search (but prefer xdg)
+						flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
+					} else {
+						String thumbnail = getXDGThumbnailFile(displayName);
+						boolean thumbnailFound = false;
+						if (thumbnails != null) {
+							// TODO pre-sort & bsearch?
+							for (String c : thumbnails) {
+								if (c.equals(thumbnail)) {
+									thumbnailFound = true;
+									break;
+								}
+							}
+						} else {
+							String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
+							var ncs = new CephStat();
+							thumbnailFound = executor.executeWithUnchecked(cm -> {
+								try {
+									cm.stat(thubmailPath, ncs);
+									return true;
+								} catch (FileNotFoundException|CephNotDirectoryException e) {
+									return false;
+								}
+							});
+						}
+
+						if (thumbnailFound) {
+							flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 						}
 					}
-				} else {
-					String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
-					thumbnailFound = executor.executeWithUnchecked(cm -> {
-						try {
-							cm.stat(thubmailPath, cs);
-							return true;
-						} catch (FileNotFoundException|CephNotDirectoryException e) {
-							return false;
-						}
-					});
+					break;
 				}
-
-				if (thumbnailFound) {
-					flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
-				}
+				yield flags;
 			}
+			case Document.COLUMN_ICON -> {
+				if (wasSymlink && cs.isDir()) {
+					// DocumentsUI grid view is hard-coded to system folder icon
+					yield R.drawable.ic_symlink_to_dir;
+				}
+				if (cs.isSymlink()) {
+					yield R.drawable.ic_broken_symlink;
+				}
+				yield null;
+			}
+			case Document.COLUMN_LAST_MODIFIED -> lcs.m_time;
+			case Document.COLUMN_MIME_TYPE -> getMime(cs.mode, displayName);
+			case Document.COLUMN_SIZE -> lcs.size;
+			case Document.COLUMN_SUMMARY -> {
+				if (cs.isSymlink()) {
+					var target = executor.executeWithUnchecked(cm -> cm.readlink(path));
+					yield "Broken symlink to " + target;
+				}
+				yield null;
+			}
+			default -> null;
+			});
 		}
-		row.add(Document.COLUMN_FLAGS, flags);
 	}
 
 	public Cursor queryChildDocuments(String parentDocumentId,
@@ -404,7 +426,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 
 		for (String entry : res) {
-			lstatBuildDocumentRow(path + "/", entry, thumbnails, result);
+			buildDocumentRow(path + "/", entry, thumbnails, result);
 		}
 		return result;
 	}
@@ -417,7 +439,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		int dirIndex = path.lastIndexOf("/");
 		String filename = path.substring(dirIndex + 1);
 		String dir = path.substring(0, dirIndex + 1);
-		lstatBuildDocumentRow(dir, filename, null, result);
+		buildDocumentRow(dir, filename, null, result);
 		return result;
 	}
 
