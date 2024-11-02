@@ -49,7 +49,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private StorageManager sm;
 	private Handler ioHandler;
 	private CephFSExecutor executor;
-	private int uid;
+	private int uid = Process.myUid();
 	private ToastThread lthread;
 
 	private boolean checkPermissions = true;
@@ -79,10 +79,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private static String APP_NAME;
 
+	private static MimeTypeMap mimeTypeMap = MimeTypeMap.getSingleton();
 	private static String getMimeFromName(String filename) {
 		int idx = filename.lastIndexOf(".");
 		if (idx > 0) {
-			String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+			String mime = mimeTypeMap.getMimeTypeFromExtension(
 				filename.substring(idx + 1));
 			if (mime != null) {
 				return mime;
@@ -148,6 +149,32 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return builder.build().toString();
 	}
 
+	private SharedPreferences.OnSharedPreferenceChangeListener loadConfig =
+			(sp, key) -> {
+		var id = sp.getString("id", "");
+		var path = sp.getString("path", "");
+		var timeout = sp.getString("timeout", "");
+		timeout = timeout.matches("\\d+") ? timeout : "20";
+		checkPermissions = sp.getBoolean("permissions", true);
+		var config = new HashMap<String, String>();
+
+		config.put("mon_host", sp.getString("mon", ""));
+		config.put("key", sp.getString("key", ""));
+		config.put("client_mount_timeout", timeout);
+		config.put("client_dirsize_rbytes", "false");
+		if (!checkPermissions) {
+			config.put("client_permissions", "false");
+		}
+
+		config.put("debug_javaclient", "20");
+		config.put("debug_ms", "1");
+		config.put("debug_client", "10");
+		config.put("ms_connection_ready_timeout", "3");
+
+		var c = new CephFSExecutor.CephMountConfig(id, path, config);
+		executor = new CephFSExecutor(c);
+	};
+
 	@Override
 	public boolean onCreate() {
 		APP_NAME = getContext().getString(R.string.app_name);
@@ -159,36 +186,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		HandlerThread ioThread = new HandlerThread("IO thread");
 		ioThread.start();
 		ioHandler = new Handler(ioThread.getLooper());
-		uid = Process.myUid();
 
 		SharedPreferences settings = PreferenceManager
 			.getDefaultSharedPreferences(getContext());
-		SharedPreferences.OnSharedPreferenceChangeListener l = (sp, key) -> {
-			var id = sp.getString("id", "");
-			var path = sp.getString("path", "");
-			var timeout = sp.getString("timeout", "");
-			timeout = timeout.matches("\\d+") ? timeout : "20";
-			checkPermissions = sp.getBoolean("permissions", true);
-			var config = new HashMap<String, String>();
-
-			config.put("mon_host", sp.getString("mon", ""));
-			config.put("key", sp.getString("key", ""));
-			config.put("client_mount_timeout", timeout);
-			config.put("client_dirsize_rbytes", "false");
-			if (!checkPermissions) {
-				config.put("client_permissions", "false");
-			}
-
-			config.put("debug_javaclient", "20");
-			config.put("debug_ms", "1");
-			config.put("debug_client", "10");
-			config.put("ms_connection_ready_timeout", "3");
-
-			var c = new CephFSExecutor.CephMountConfig(id, path, config);
-			executor = new CephFSExecutor(c);
-		};
-		settings.registerOnSharedPreferenceChangeListener(l);
-		l.onSharedPreferenceChanged(settings, "");
+		settings.registerOnSharedPreferenceChangeListener(loadConfig);
+		loadConfig.onSharedPreferenceChanged(settings, "");
 		return true;
 	}
 
@@ -273,18 +275,24 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		});
 	}
 
-	private String getXDGThumbnailFile(String name) {
-		MessageDigest md5;
+	private static MessageDigest md5;
+	static {
 		try {
 			md5 = MessageDigest.getInstance("MD5");
 		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException(e);
+			throw new RuntimeException(e);
 		}
-		md5.update(("./" + name).getBytes());
-		byte[] digest = md5.digest();
-		String hex = String.format("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7], digest[8], digest[9], digest[10], digest[11], digest[12], digest[13], digest[14], digest[15]);
-
-		return hex + ".png";
+	}
+	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
+	private String getXDGThumbnailFile(String name) {
+		// 16 bytes
+		var digest = md5.digest(("./" + name).getBytes());
+		var hex = new char[32];
+		for (int i = 0; i < 16; i++) {
+			hex[i * 2] = HEX_DIGITS[(digest[i] & 0xf0) >>> 4];
+			hex[i * 2 + 1] = HEX_DIGITS[digest[i] & 0xf];
+		}
+		return String.valueOf(hex) + ".png";
 	}
 
 	@Override
@@ -391,7 +399,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						if (thumbnails != null) {
 							thumbnailFound = thumbnails.contains(thumbnail);
 						} else {
-							String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
+							String thubmailPath = dir + ".sh_thumbnails/normal/" + thumbnail;
 							var ncs = new CephStat();
 							thumbnailFound = executor.executeWithUnchecked(cm -> {
 								try {
@@ -437,7 +445,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				yield null;
 			}
 			case Document.COLUMN_LAST_MODIFIED -> lcs.m_time;
-			case Document.COLUMN_MIME_TYPE -> getMime(cs.mode, displayName);
+			case Document.COLUMN_MIME_TYPE -> mimeType;
 			case Document.COLUMN_SIZE -> lcs.size;
 			case Document.COLUMN_SUMMARY -> {
 				if (cs.isSymlink()) {
