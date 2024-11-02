@@ -34,7 +34,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
@@ -319,7 +322,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	}
 
 	private void buildDocumentRow(String dir, String displayName,
-			MatrixCursor result, String[] thumbnails, CephStat parentStat)
+			MatrixCursor result, Set<String> thumbnails, CephStat parentStat)
 			throws FileNotFoundException {
 		// TODO consider EXTRA_ERROR?
 		var path = dir + displayName;
@@ -386,13 +389,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						String thumbnail = getXDGThumbnailFile(displayName);
 						boolean thumbnailFound = false;
 						if (thumbnails != null) {
-							// TODO pre-sort & bsearch?
-							for (String c : thumbnails) {
-								if (c.equals(thumbnail)) {
-									thumbnailFound = true;
-									break;
-								}
-							}
+							thumbnailFound = thumbnails.contains(thumbnail);
 						} else {
 							String thubmailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(displayName);
 							var ncs = new CephStat();
@@ -479,15 +476,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			return result;
 		}
 
-		String[] thumbnails = null;
+		Set<String> thumbnails = null;
 		try {
-			thumbnails = executor.execute(cm -> {
+			thumbnails = new HashSet<String>(Arrays.asList(executor.execute(cm -> {
 				try {
 					return cm.listdir(path + "/.sh_thumbnails/normal");
 				} catch (FileNotFoundException e) {
 					return new String[0];
 				}
-			});
+			})));
 		} catch (IOException e) {
 			Log.w("Fail to list thumbnails directory, falling back to per-file slow path", e);
 		}
