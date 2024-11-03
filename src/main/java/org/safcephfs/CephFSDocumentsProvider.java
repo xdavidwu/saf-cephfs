@@ -374,7 +374,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		String mimeType = getMime(cs.mode, displayName);
 
 		for (var col : result.getColumnNames()) {
-			row.add(col, switch (col) {
+			row.add(switch (col) {
 			case Document.COLUMN_DISPLAY_NAME -> displayName;
 			case Document.COLUMN_DOCUMENT_ID -> documentIdFromPath(path);
 			case Document.COLUMN_FLAGS -> {
@@ -487,6 +487,11 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			return result;
 		}
 
+		// new with known size to avoid dynamic growth
+		var newResult = new MatrixCursor(result.getColumnNames(), res.length);
+		newResult.setNotificationUri(cr, result.getNotificationUri());
+		result = newResult;
+
 		var cs = executor.executeWithCursorExtra(cm -> {
 			var st = new CephStat();
 			cm.stat(path, st);
@@ -519,7 +524,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throws FileNotFoundException {
 		Log.v(APP_NAME, "queryDocument " + documentId);
 		var path = pathFromDocumentId(documentId);
-		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_DOC_PROJECTION);
+		MatrixCursor result = new MatrixCursor(
+			projection != null ? projection : DEFAULT_DOC_PROJECTION, 1);
 		int dirIndex = path.lastIndexOf("/");
 		String filename = path.substring(dirIndex + 1);
 		String dir = path.substring(0, dirIndex + 1);
@@ -592,7 +598,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	public Cursor queryRoots(String[] projection)
 			throws FileNotFoundException {
-		MatrixCursor result = new MatrixCursor(projection != null ? projection : DEFAULT_ROOT_PROJECTION);
+		MatrixCursor result = new MatrixCursor(
+			projection != null ? projection : DEFAULT_ROOT_PROJECTION, 1);
 		CephStatVFS csvfs = new CephStatVFS();
 		executor.executeWithUnchecked(cm -> {
 			cm.statfs(".", csvfs);
@@ -601,16 +608,21 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 		var rootUri = executor.config.getRootUri().toString();
 		MatrixCursor.RowBuilder row = result.newRow();
-		row.add(Root.COLUMN_ROOT_ID, rootUri);
-		row.add(Root.COLUMN_DOCUMENT_ID, rootUri);
-		row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_IS_CHILD);
-		row.add(Root.COLUMN_TITLE, executor.config.getTitle());
-		row.add(Root.COLUMN_ICON, R.mipmap.sym_def_app_icon);
-		// DocumentsUI shows localized and humanized COLUMN_AVAILABLE_BYTES
-		// when summary is not present, which is more useful and nicer
-		// row.add(Root.COLUMN_SUMMARY, executor.config.getSummary());
-		row.add(Root.COLUMN_CAPACITY_BYTES, csvfs.blocks * csvfs.frsize);
-		row.add(Root.COLUMN_AVAILABLE_BYTES, csvfs.bavail * csvfs.frsize);
+		for (var col : result.getColumnNames()) {
+			row.add(switch (col) {
+			case Root.COLUMN_ROOT_ID -> rootUri;
+			case Root.COLUMN_DOCUMENT_ID -> rootUri;
+			case Root.COLUMN_FLAGS -> Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_IS_CHILD;
+			case Root.COLUMN_TITLE -> executor.config.getTitle();
+			case Root.COLUMN_ICON -> R.mipmap.sym_def_app_icon;
+			// DocumentsUI shows localized and humanized COLUMN_AVAILABLE_BYTES
+			// when summary is not present, which is more useful and nicer
+			// case Root.COLUMN_SUMMARY -> executor.config.getSummary();
+			case Root.COLUMN_CAPACITY_BYTES -> csvfs.blocks * csvfs.frsize;
+			case Root.COLUMN_AVAILABLE_BYTES -> csvfs.bavail * csvfs.frsize;
+			default -> null;
+			});
+		}
 		return result;
 	}
 }
