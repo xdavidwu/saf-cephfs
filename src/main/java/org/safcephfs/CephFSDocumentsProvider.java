@@ -28,6 +28,7 @@ import android.provider.DocumentsProvider;
 import android.webkit.MimeTypeMap;
 import android.widget.Toast;
 import android.util.Log;
+import android.util.LruCache;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -284,15 +285,26 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 	}
 	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
-	private String getXDGThumbnailFile(String name) {
-		// 16 bytes
-		var digest = md5.digest(("./" + name).getBytes());
-		var hex = new char[32];
-		for (int i = 0; i < 16; i++) {
-			hex[i * 2] = HEX_DIGITS[(digest[i] & 0xf0) >>> 4];
-			hex[i * 2 + 1] = HEX_DIGITS[digest[i] & 0xf];
+	// String.hashCode should be faster than md5
+	private static LruCache<String, String> xdgThumbnailNameCache =
+			new LruCache<String, String>(1 * 1024 * 1024) {
+		protected String create(String key) {
+			// 16 bytes
+			var digest = md5.digest(("./" + key).getBytes());
+			var hex = new char[32];
+			for (int i = 0; i < 16; i++) {
+				hex[i * 2] = HEX_DIGITS[(digest[i] & 0xf0) >>> 4];
+				hex[i * 2 + 1] = HEX_DIGITS[digest[i] & 0xf];
+			}
+			return String.valueOf(hex) + ".png";
 		}
-		return String.valueOf(hex) + ".png";
+
+		protected int sizeOf(String key, String value) {
+			return 36;
+		}
+	};
+	private String getXDGThumbnailFile(String name) {
+		return xdgThumbnailNameCache.get(name);
 	}
 
 	@Override
