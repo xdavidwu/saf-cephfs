@@ -17,9 +17,9 @@ repositories {
 android {
 	namespace 'org.safcephfs'
 	compileSdkVersion 'android-35'
-	buildToolsVersion '34'
+	buildToolsVersion '35.0.1'
 	ndkPath '/opt/android-ndk'
-	ndkVersion '27.0.12077973'
+	ndkVersion '28.0.13004108'
 
 	defaultConfig {
 		minSdkVersion 26
@@ -49,7 +49,7 @@ android {
 			// agp weirdness: specify version to use system cmake
 			// https://developer.android.com/reference/tools/gradle-api/8.1/com/android/build/api/dsl/Cmake#version()
 			// TODO: use cmake from android-sdk?
-			version '3.30.5'
+			version '3.31.5'
 		}
 	}
 
