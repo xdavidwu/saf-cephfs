@@ -9,6 +9,7 @@ import android.database.MatrixCursor;
 import android.graphics.Point;
 import android.media.ExifInterface;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
@@ -319,7 +320,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		} catch (FileNotFoundException e) {
 		}
 
-		if (ExifInterface.isSupportedMimeType(getDocumentType(documentId))) {
+		if (Build.VERSION.SDK_INT >= 30 && ExifInterface.isSupportedMimeType(getDocumentType(documentId))) {
 			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
 
 			var stream = new AutoCloseInputStream(fd);
@@ -394,7 +395,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						flags |= Document.FLAG_SUPPORTS_WRITE;
 					}
 
-					if (ExifInterface.isSupportedMimeType(mimeType)) {
+					if (Build.VERSION.SDK_INT >= 30 && ExifInterface.isSupportedMimeType(mimeType)) {
 						// may be available in exif, skip the search (but prefer xdg)
 						flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 					} else {
