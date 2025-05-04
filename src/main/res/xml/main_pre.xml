@@ -23,6 +23,7 @@
 			android:title="@string/permissions" />
 		<EditTextPreference android:key="timeout"
 			android:defaultValue="20"
-			android:title="@string/timeout" />
+			android:title="@string/timeout"
+			android:inputType="number" />
 	</PreferenceCategory>
 </PreferenceScreen>

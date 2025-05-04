@@ -16,7 +16,7 @@ import com.ceph.fs.CephMount;
 
 public class CephFSExecutor {
 	protected record CephMountConfig(
-			String id, String path, Map<String, String> config) {
+			String id, String path, Map<String, Object> config) {
 
 		protected Uri getRootUri() {
 			var builder = new Uri.Builder();
@@ -46,7 +46,7 @@ public class CephFSExecutor {
 
 	protected Operation<CephMount> mount = unused -> {
 		CephMount m = new CephMount(config.id);
-		config.config.forEach((k, v) -> m.conf_set(k, v));
+		config.config.forEach((k, v) -> m.conf_set(k, v.toString()));
 		m.mount(config.path);
 		return m;
 	};
