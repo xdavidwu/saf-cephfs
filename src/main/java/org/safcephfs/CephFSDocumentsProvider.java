@@ -296,15 +296,15 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				hex[i * 2] = HEX_DIGITS[(digest[i] & 0xf0) >>> 4];
 				hex[i * 2 + 1] = HEX_DIGITS[digest[i] & 0xf];
 			}
-			return String.valueOf(hex) + ".png";
+			return String.valueOf(hex);
 		}
 
 		protected int sizeOf(String key, String value) {
-			return 36;
+			return 32;
 		}
 	};
 	private String getXDGThumbnailFile(String name) {
-		return xdgThumbnailNameCache.get(name);
+		return xdgThumbnailNameCache.get(name) + ".png";
 	}
 
 	@Override
