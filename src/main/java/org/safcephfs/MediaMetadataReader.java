@@ -3,6 +3,7 @@ package org.safcephfs;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMetadata;
 import android.media.ExifInterface;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
 
@@ -77,6 +78,17 @@ public final class MediaMetadataReader {
 		return null;
 	}
 
+	// compatibility with pre 29
+	private static class AutoCloseableMediaMetadataRetriever
+			extends MediaMetadataRetriever implements AutoCloseable {
+		@Override
+		public void close() throws IOException {
+			if (Build.VERSION.SDK_INT >= 29) {
+				super.close();
+			}
+		}
+	}
+
 	public static void getMetadata(Bundle metadata, FileDescriptor fd,
 			String mimeType) {
 		String metadataType;
@@ -92,8 +104,8 @@ public final class MediaMetadataReader {
 		}
 		Bundle typeSpecificMetadata = new Bundle();
 
-		try (var retriever = new UncheckedAutoCloseable<MediaMetadataRetriever>(
-					new MediaMetadataRetriever())) {
+		try (var retriever = new UncheckedAutoCloseable<AutoCloseableMediaMetadataRetriever>(
+					new AutoCloseableMediaMetadataRetriever())) {
 			retriever.c().setDataSource(fd);
 
 			for (int key: nameMapping.keySet()) {
