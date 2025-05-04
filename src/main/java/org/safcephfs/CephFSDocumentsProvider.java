@@ -39,6 +39,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
@@ -144,9 +145,8 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		var uri = Uri.parse(documentId);
 		var segments = uri.getPathSegments();
 		var builder = uri.buildUpon().path("/");
-		for (var seg : segments.subList(0, segments.size() - 1)) {
-			builder.appendPath(seg);
-		}
+		segments.subList(0, segments.size() - 1).forEach(
+			seg -> builder.appendPath(seg));
 		return builder.build().toString();
 	}
 
@@ -200,12 +200,12 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		Log.v(APP_NAME, "createDocument " + parentDocumentId + " " + mimeType + " " + displayName);
 		var path = pathFromDocumentId(parentDocumentId) + "/" + displayName;
 		if (mimeType.equals(Document.MIME_TYPE_DIR)) {
-			executor.executeWithUnchecked(cm -> {
+			executor.executeWithUncheckedOrFNF(cm -> {
 				cm.mkdir(path, 0700);
 				return null;
 			});
 		} else {
-			executor.executeWithUnchecked(cm -> {
+			executor.executeWithUncheckedOrFNF(cm -> {
 				int fd = cm.open(path, CephMount.O_WRONLY | CephMount.O_CREAT | CephMount.O_EXCL, 0700);
 				cm.close(fd);
 				return null;
@@ -217,7 +217,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	public void deleteDocument(String documentId) throws FileNotFoundException {
 		Log.v(APP_NAME, "deleteDocument " + documentId);
 		var path = pathFromDocumentId(documentId);
-		executor.executeWithUnchecked(cm -> {
+		executor.executeWithUncheckedOrFNF(cm -> {
 			cm.unlink(path);
 			return null;
 		});
@@ -230,7 +230,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		var fromPath = pathFromDocumentId(documentId);
 		var parentDocumentId = toParentDocumentId(documentId);
 		var toPath = pathFromDocumentId(parentDocumentId) + "/" + displayName;
-		executor.executeWithUnchecked(cm -> {
+		executor.executeWithUncheckedOrFNF(cm -> {
 			cm.rename(fromPath, toPath);
 			return null;
 		});
@@ -268,7 +268,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			throw new UnsupportedOperationException("Mode " + mode + " not implemented");
 		}
 
-		return executor.executeWithUnchecked(cm -> {
+		return executor.executeWithUncheckedOrFNF(cm -> {
 			int fd = cm.open(path, flag, 0);
 			return sm.openProxyFileDescriptor(fdmode,
 				new CephFSProxyFileDescriptorCallback(executor, cm, fd, path, flag),
@@ -341,13 +341,13 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		throw new FileNotFoundException();
 	}
 
-	private void buildDocumentRow(String dir, String displayName,
-			MatrixCursor result, Set<String> thumbnails, CephStat parentStat)
+	private Object[] getDocumentRow(String dir, String displayName,
+			String[] cols, Set<String> thumbnails, CephStat parentStat)
 			throws FileNotFoundException {
-		// TODO consider EXTRA_ERROR?
 		var path = dir + displayName;
 		CephStat lcs = new CephStat();
-		executor.executeWithUnchecked(cm -> {
+		// TODO consider EXTRA_ERROR?
+		executor.executeWithUncheckedOrFNF(cm -> {
 			try {
 				cm.lstat(path, lcs);
 				return null;
@@ -355,26 +355,21 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				throw new FileNotFoundException(e.getMessage());
 			}
 		});
-		MatrixCursor.RowBuilder row = result.newRow();
 
 		var wasSymlink = lcs.isSymlink();
-		CephStat cs = lcs;
-		if (wasSymlink) {
-			cs = executor.executeWithUnchecked(cm -> {
-				try {
-					var ncs = new CephStat();
-					cm.stat(path, ncs);
-					return ncs;
-				} catch (FileNotFoundException|CephNotDirectoryException e) {
-					Log.e(APP_NAME, "stat: " + dir + displayName + " not found", e);
-					return lcs;
-				}
-			});
-		}
+		CephStat cs = wasSymlink ? executor.executeWithUnchecked(cm -> {
+			try {
+				var ncs = new CephStat();
+				cm.stat(path, ncs);
+				return ncs;
+			} catch (FileNotFoundException|CephNotDirectoryException e) {
+				Log.e(APP_NAME, "stat: " + dir + displayName + " not found", e);
+				return lcs;
+			}
+		}) : lcs;
 		String mimeType = getMime(cs.mode, displayName);
 
-		for (var col : result.getColumnNames()) {
-			row.add(switch (col) {
+		return Arrays.stream(cols).map(col -> switch (col) {
 			case Document.COLUMN_DISPLAY_NAME -> displayName;
 			case Document.COLUMN_DOCUMENT_ID -> documentIdFromPath(path);
 			case Document.COLUMN_FLAGS -> {
@@ -430,18 +425,16 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					break;
 				}
 
-				if (parentStat == null) {
-					parentStat = executor.executeWithUnchecked(cm -> {
-						var st = new CephStat();
-						cm.stat(dir, st);
-						return st;
-					});
-				}
+				var mParentStat = parentStat == null ? executor.executeWithUnchecked(cm -> {
+					var st = new CephStat();
+					cm.stat(dir, st);
+					return st;
+				}) : parentStat;
 				// TODO support recur
-				if (mayWrite(parentStat) && !lcs.isDir()) {
+				if (mayWrite(mParentStat) && !lcs.isDir()) {
 					flags |= Document.FLAG_SUPPORTS_DELETE;
 				}
-				if (mayWrite(parentStat)) {
+				if (mayWrite(mParentStat)) {
 					flags |= Document.FLAG_SUPPORTS_RENAME;
 				}
 				yield flags;
@@ -467,56 +460,66 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				yield null;
 			}
 			default -> null;
-			});
-		}
+		}).toArray();
 	}
 
 	public Cursor queryChildDocuments(String parentDocumentId,
 			String[] projection, String sortOrder)
 			throws FileNotFoundException {
 		var path = pathFromDocumentId(parentDocumentId);
-		MatrixCursor result = new MatrixCursor(
-			projection != null ? projection : DEFAULT_DOC_PROJECTION);
-		result.setNotificationUri(cr, DocumentsContract.buildChildDocumentsUri(
-			AUTHORITY, parentDocumentId));
+		var cols = projection != null ? projection : DEFAULT_DOC_PROJECTION;
+		var notifUri = DocumentsContract.buildChildDocumentsUri(
+				AUTHORITY, parentDocumentId);
+
+		MatrixCursor errResult = new MatrixCursor(cols);
+		errResult.setNotificationUri(cr, notifUri);
 		Log.v(APP_NAME, "queryChildDocuments " + parentDocumentId);
-		String[] res = executor.executeWithCursorExtra(cm -> {
+		String[] names = executor.executeWithCursorExtra(cm -> {
 			return cm.listdir(path);
-		}, result);
-		if (res == null) {
-			return result;
+		}, errResult);
+		if (names == null) {
+			return errResult;
 		}
 
-		// new with known size to avoid dynamic growth
-		var newResult = new MatrixCursor(result.getColumnNames(), res.length);
-		newResult.setNotificationUri(cr, result.getNotificationUri());
-		result = newResult;
-
-		var cs = executor.executeWithCursorExtra(cm -> {
+		var parentStat = executor.executeWithCursorExtra(cm -> {
 			var st = new CephStat();
 			cm.stat(path, st);
 			return st;
-		}, result);
-		if (cs == null) {
-			return result;
+		}, errResult);
+		if (parentStat == null) {
+			return errResult;
 		}
 
-		Set<String> thumbnails = null;
+		// new with known size to avoid dynamic growth
+		var result = new MatrixCursor(cols, names.length);
+		result.setNotificationUri(cr, notifUri);
+
+		String[] thumbnailFiles = null;
 		try {
-			thumbnails = new HashSet<String>(Arrays.asList(executor.execute(cm -> {
+			thumbnailFiles = executor.execute(cm -> {
 				try {
 					return cm.listdir(path + "/.sh_thumbnails/normal");
 				} catch (FileNotFoundException e) {
 					return new String[0];
 				}
-			})));
+			});
 		} catch (IOException e) {
 			Log.w("Fail to list thumbnails directory, falling back to per-file slow path", e);
 		}
+		var thumbnails = thumbnailFiles == null ? null : new HashSet<String>(Arrays.asList(thumbnailFiles));
 
-		for (String entry : res) {
-			buildDocumentRow(path + "/", entry, result, thumbnails, cs);
-		}
+		var dir = path + "/";
+		Arrays.stream(names).map(o -> {
+			try {
+				return getDocumentRow(dir, o, cols, thumbnails, parentStat);
+			} catch (FileNotFoundException e) {
+				return null;
+			}
+		}).forEach(r -> {
+			if (r != null) {
+				result.addRow(r);
+			}
+		});
 		return result;
 	}
 
@@ -529,7 +532,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		int dirIndex = path.lastIndexOf("/");
 		String filename = path.substring(dirIndex + 1);
 		String dir = path.substring(0, dirIndex + 1);
-		buildDocumentRow(dir, filename, result, null, null);
+		result.addRow(getDocumentRow(dir, filename, result.getColumnNames(), null, null));
 		return result;
 	}
 
@@ -551,7 +554,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 	private long getXattrULL(String path, String name)
 			throws FileNotFoundException {
 		var buf = new byte[32];
-		var l = executor.executeWithUnchecked(cm -> {
+		var l = executor.executeWithUncheckedOrFNF(cm -> {
 			return cm.getxattr(path, name, buf);
 		}).intValue();
 		var s = new String(buf, 0, l);
@@ -601,7 +604,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor result = new MatrixCursor(
 			projection != null ? projection : DEFAULT_ROOT_PROJECTION, 1);
 		CephStatVFS csvfs = new CephStatVFS();
-		executor.executeWithUnchecked(cm -> {
+		executor.executeWithUncheckedOrFNF(cm -> {
 			cm.statfs(".", csvfs);
 			return null;
 		});

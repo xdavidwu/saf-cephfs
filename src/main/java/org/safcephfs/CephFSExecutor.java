@@ -185,7 +185,15 @@ public class CephFSExecutor {
 		}
 	}
 
-	protected <T> T executeWithUnchecked(Operation<T> op)
+	protected <T> T executeWithUnchecked(Operation<T> op) {
+		try {
+			return execute(op);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	protected <T> T executeWithUncheckedOrFNF(Operation<T> op)
 			throws FileNotFoundException {
 		try {
 			return execute(op);
