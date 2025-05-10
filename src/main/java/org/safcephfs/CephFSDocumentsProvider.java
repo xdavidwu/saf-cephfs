@@ -84,13 +84,17 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private static MimeTypeMap mimeTypeMap = MimeTypeMap.getSingleton();
 	private static String getMimeFromName(String filename) {
-		int idx = filename.lastIndexOf(".");
-		if (idx > 0) {
-			String mime = mimeTypeMap.getMimeTypeFromExtension(
-				filename.substring(idx + 1));
+		var s = filename;
+		while (true) {
+			var mime = mimeTypeMap.getMimeTypeFromExtension(s);
 			if (mime != null) {
 				return mime;
 			}
+			var i = s.indexOf('.');
+			if (i == -1) {
+				break;
+			}
+			s = s.substring(i + 1);
 		}
 		return "application/octet-stream";
 	}
