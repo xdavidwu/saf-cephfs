@@ -162,12 +162,13 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		var timeout = sp.getString("timeout", "");
 		timeout = timeout.matches("\\d+") ? timeout : "20";
 		var config = new HashMap<String, Object>();
+		checkPermissions = sp.getBoolean("permissions", true);
 
 		config.put("mon_host", sp.getString("mon", ""));
 		config.put("key", sp.getString("key", ""));
 		config.put("client_mount_timeout", timeout);
 		config.put("client_dirsize_rbytes", false);
-		config.put("client_permissions", sp.getBoolean("permissions", true));
+		config.put("client_permissions", checkPermissions);
 
 		config.put("debug_javaclient", 20);
 		config.put("debug_ms", 1);
