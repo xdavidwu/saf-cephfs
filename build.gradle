@@ -19,7 +19,7 @@ android {
 	compileSdkVersion 'android-36'
 	buildToolsVersion '35.0.1'
 	ndkPath '/opt/android-ndk'
-	ndkVersion '28.1.13356709'
+	ndkVersion '28.2.13676358'
 
 	defaultConfig {
 		minSdkVersion 26
@@ -49,7 +49,7 @@ android {
 			// agp weirdness: specify version to use system cmake
 			// https://developer.android.com/reference/tools/gradle-api/8.1/com/android/build/api/dsl/Cmake#version()
 			// TODO: use cmake from android-sdk?
-			version '4.0.2'
+			version '4.0.3'
 		}
 	}
 
