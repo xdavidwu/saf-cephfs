@@ -9,6 +9,7 @@ Currently only for arm64-v8a
 This project uses a few libraries from Archlinux User Repository (AUR):
 
 - android-aarch64-openssl
+- android-aarch64-icu
 
 For exact tested version of those libraries, inspect the container mentioned below.
 
