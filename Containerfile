@@ -1,7 +1,7 @@
 FROM archlinux
 
 RUN printf '[aurbuild]\nServer = https://aurbuild.xdavidwu.link\n' >> /etc/pacman.conf
-RUN curl 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xf73f137d4573defaa097dbf09544cff6b08a3fd3' | pacman-key -a - && pacman-key --init && pacman-key --lsign-key f73f137d4573defaa097dbf09544cff6b08a3fd3 && pacman -Syu --noconfirm && pacman -S --noconfirm jdk21-openjdk android-sdk-cmdline-tools-latest  android-platform-36 android-sdk-build-tools=r35.0.1-1 android-ndk android-aarch64-openssl clang cmake ninja python-yaml && rm /var/cache/pacman/pkg/* && mkdir /build
+RUN curl 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xf73f137d4573defaa097dbf09544cff6b08a3fd3' | pacman-key -a - && pacman-key --init && pacman-key --lsign-key f73f137d4573defaa097dbf09544cff6b08a3fd3 && pacman -Syu --noconfirm && pacman -S --noconfirm jdk21-openjdk android-sdk-cmdline-tools-latest  android-platform-36 android-sdk-build-tools=r35.0.1-1 android-ndk android-aarch64-openssl android-aarch64-icu clang cmake ninja python-yaml && rm /var/cache/pacman/pkg/* && mkdir /build
 
 WORKDIR /build
 
