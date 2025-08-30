@@ -1,4 +1,4 @@
-package org.safcephfs;
+package link.xdavidwu.saf.cephfs;
 
 import android.os.ProxyFileDescriptorCallback;
 import android.system.ErrnoException;

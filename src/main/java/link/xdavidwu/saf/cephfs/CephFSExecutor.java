@@ -1,4 +1,4 @@
-package org.safcephfs;
+package link.xdavidwu.saf.cephfs;
 
 import android.database.Cursor;
 import android.net.Uri;

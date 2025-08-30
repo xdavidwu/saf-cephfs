@@ -1,4 +1,4 @@
-package org.safcephfs;
+package link.xdavidwu.saf;
 
 public record UncheckedAutoCloseable<T extends AutoCloseable>(T c)
 		implements AutoCloseable {

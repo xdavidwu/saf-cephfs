@@ -1,4 +1,4 @@
-package org.safcephfs;
+package link.xdavidwu.saf.cephfs;
 
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
@@ -16,7 +16,7 @@ public class MainActivity extends PreferenceActivity
 	private EditTextPreference monText, pathText, idText, keyText, timeoutText;
 
 	private void notifyRootChanges(){
-		Uri uri = DocumentsContract.buildRootsUri("org.safcephfs");
+		Uri uri = DocumentsContract.buildRootsUri("link.xdavidwu.saf.cephfs");
 		getContentResolver().notifyChange(uri, null);
 	}
 	

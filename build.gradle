@@ -15,13 +15,14 @@ repositories {
 }
 
 android {
-	namespace 'org.safcephfs'
+	namespace 'link.xdavidwu.saf.cephfs'
 	compileSdkVersion 'android-36'
 	buildToolsVersion '35.0.1'
 	ndkPath '/opt/android-ndk'
 	ndkVersion '28.2.13676358'
 
 	defaultConfig {
+		applicationId 'org.safcephfs'
 		minSdkVersion 26
 		targetSdkVersion 36
 		externalNativeBuild {

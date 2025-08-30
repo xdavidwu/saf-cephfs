@@ -15,12 +15,12 @@
  */
 
 /*
- * Changed to remove Nullable annotation, make it under org.safcephfs namespace,
+ * Changed to remove Nullable annotation, make it under link.xdavidwu.saf namespace,
  * support whatever mimetype ExifInterface supports, default to extract all
  * recognized tags
  */
 
-package org.safcephfs;
+package link.xdavidwu.saf;
 
 import android.media.ExifInterface;
 import android.provider.DocumentsContract;

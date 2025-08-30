@@ -1,4 +1,4 @@
-package org.safcephfs;
+package link.xdavidwu.saf.cephfs;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -42,6 +42,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import link.xdavidwu.saf.MediaMetadataReader;
+import link.xdavidwu.saf.MetadataReader;
+import link.xdavidwu.saf.UncheckedAutoCloseable;
+
 import com.ceph.fs.CephMount;
 import com.ceph.fs.CephStat;
 import com.ceph.fs.CephStatVFS;
@@ -57,7 +61,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private boolean checkPermissions = true;
 
-	private static final String AUTHORITY = "org.safcephfs";
+	private static final String AUTHORITY = "link.xdavidwu.saf.cephfs";
 
 	private static final String[] DEFAULT_ROOT_PROJECTION = new String[]{
 		Root.COLUMN_ROOT_ID,
@@ -477,6 +481,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		MatrixCursor errResult = new MatrixCursor(cols);
 		errResult.setNotificationUri(cr, notifUri);
 		Log.v(APP_NAME, "queryChildDocuments " + parentDocumentId);
+		long listdirStart = System.currentTimeMillis();
 		String[] names = executor.executeWithCursorExtra(cm -> {
 			return cm.listdir(path);
 		}, errResult);
@@ -511,6 +516,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}
 		var thumbnails = thumbnailFiles == null ? null : new HashSet<String>(Arrays.asList(thumbnailFiles));
 
+		long lstatsStart = System.currentTimeMillis();
 		var dir = path + "/";
 		Arrays.stream(names).map(o -> {
 			try {
@@ -523,6 +529,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				result.addRow(r);
 			}
 		});
+		long end = System.currentTimeMillis();
+		toast("queryChildDocuments: listdir: " + (lstatsStart - listdirStart) +
+				" lstats: " + (end - lstatsStart));
 		return result;
 	}
 

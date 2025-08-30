@@ -1,4 +1,4 @@
-package org.safcephfs;
+package link.xdavidwu.saf;
 
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMetadata;
