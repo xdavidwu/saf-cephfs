@@ -3,10 +3,8 @@ package link.xdavidwu.saf.cephfs;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.database.MatrixCursor;
-import android.graphics.Point;
 import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
@@ -26,22 +24,19 @@ import android.provider.DocumentsContract;
 import android.provider.DocumentsContract.Document;
 import android.provider.DocumentsContract.Root;
 import android.provider.DocumentsProvider;
-import android.webkit.MimeTypeMap;
 import android.widget.Toast;
 import android.util.Log;
-import android.util.LruCache;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import link.xdavidwu.saf.AbstractUnixLikeDocumentsProvider;
 import link.xdavidwu.saf.MediaMetadataReader;
 import link.xdavidwu.saf.MetadataReader;
 import link.xdavidwu.saf.UncheckedAutoCloseable;
@@ -51,7 +46,7 @@ import com.ceph.fs.CephStat;
 import com.ceph.fs.CephStatVFS;
 import com.ceph.fs.CephNotDirectoryException;
 
-public class CephFSDocumentsProvider extends DocumentsProvider {
+public class CephFSDocumentsProvider extends AbstractUnixLikeDocumentsProvider {
 	private ContentResolver cr;
 	private StorageManager sm;
 	private Handler ioHandler;
@@ -86,42 +81,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 
 	private static String APP_NAME;
 
-	private static MimeTypeMap mimeTypeMap = MimeTypeMap.getSingleton();
-	private static String getMimeFromName(String filename) {
-		var s = filename;
-		while (true) {
-			var mime = mimeTypeMap.getMimeTypeFromExtension(s);
-			if (mime != null) {
-				return mime;
-			}
-			var i = s.indexOf('.');
-			if (i == -1) {
-				break;
-			}
-			s = s.substring(i + 1);
-		}
-		return "application/octet-stream";
-	}
-
-	private static final int S_IFMT = 0170000, S_IFSOCK = 0140000,
-		S_IFLNK = 0120000, S_IFREG = 0100000, S_IFBLK = 0060000,
-		S_IFDIR = 0040000, S_IFCHR = 0020000, S_IFIFO = 0010000;
-
-	private static String getMime(int mode, String name) {
-		return switch (mode & S_IFMT) {
-		case S_IFSOCK -> "inode/socket";
-		case S_IFLNK -> "inode/symlink";
-		case S_IFREG -> getMimeFromName(name);
-		case S_IFBLK -> "inode/blockdevice";
-		case S_IFDIR -> Document.MIME_TYPE_DIR;
-		case S_IFCHR -> "inode/chardevice";
-		case S_IFIFO -> "inode/fifo";
-		default -> "application/octet-stream";
-		};
-	}
-
-	private static int S_IR = 4, S_IW = 2, S_IX = 1;
-
 	private int getPermissions(CephStat cs) {
 		return (!checkPermissions ? 7 :
 				cs.uid == uid ? cs.mode >> 6 :
@@ -142,21 +101,9 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		lthread.handler.sendMessage(msg);
 	}
 
-	private String pathFromDocumentId(String documentId) {
-		return Uri.parse(documentId).getPath();
-	}
-
-	private String documentIdFromPath(String path) {
-		return executor.config.getRootUri().buildUpon().path(path).build().toString();
-	}
-
-	private String toParentDocumentId(String documentId) {
-		var uri = Uri.parse(documentId);
-		var segments = uri.getPathSegments();
-		var builder = uri.buildUpon().path("/");
-		segments.subList(0, segments.size() - 1).forEach(
-			seg -> builder.appendPath(seg));
-		return builder.build().toString();
+	@Override
+	protected Uri getRootUri() {
+		return executor.config.getRootUri();
 	}
 
 	private SharedPreferences.OnSharedPreferenceChangeListener loadConfig =
@@ -202,6 +149,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return true;
 	}
 
+	@Override
 	public String createDocument(String parentDocumentId, String mimeType,
 			String displayName) throws FileNotFoundException {
 		Log.v(APP_NAME, "createDocument " + parentDocumentId + " " + mimeType + " " + displayName);
@@ -221,6 +169,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return documentIdFromPath(path);
 	}
 
+	@Override
 	public void deleteDocument(String documentId) throws FileNotFoundException {
 		Log.v(APP_NAME, "deleteDocument " + documentId);
 		var path = pathFromDocumentId(documentId);
@@ -232,6 +181,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 			AUTHORITY, toParentDocumentId(documentId)), null, 0);
 	}
 
+	@Override
 	public String renameDocument(String documentId, String displayName)
 			throws FileNotFoundException {
 		var fromPath = pathFromDocumentId(documentId);
@@ -246,11 +196,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return documentIdFromPath(toPath);
 	}
 
-	public boolean isChildDocument(String parentDocumentId, String documentId) {
-		return documentId.startsWith(parentDocumentId) &&
-			documentId.charAt(parentDocumentId.length()) == '/';
-	}
-
+	@Override
 	public ParcelFileDescriptor openDocument(String documentId,
 			String mode, CancellationSignal cancellationSignal)
 			throws UnsupportedOperationException,
@@ -283,71 +229,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		});
 	}
 
-	private static MessageDigest md5;
-	static {
-		try {
-			md5 = MessageDigest.getInstance("MD5");
-		} catch (NoSuchAlgorithmException e) {
-			throw new RuntimeException(e);
-		}
-	}
-	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
-	// String.hashCode should be faster than md5
-	private static LruCache<String, String> xdgThumbnailNameCache =
-			new LruCache<String, String>(1 * 1024 * 1024) {
-		protected String create(String key) {
-			// 16 bytes
-			var digest = md5.digest(("./" + key).getBytes());
-			var hex = new char[32];
-			for (int i = 0; i < 16; i++) {
-				hex[i * 2] = HEX_DIGITS[(digest[i] & 0xf0) >>> 4];
-				hex[i * 2 + 1] = HEX_DIGITS[digest[i] & 0xf];
-			}
-			return String.valueOf(hex);
-		}
-
-		protected int sizeOf(String key, String value) {
-			return 32;
-		}
-	};
-	private String getXDGThumbnailFile(String name) {
-		return xdgThumbnailNameCache.get(name) + ".png";
-	}
-
-	@Override
-	public AssetFileDescriptor openDocumentThumbnail(String documentId,
-			Point sizeHint, CancellationSignal signal)
-			throws FileNotFoundException {
-		var path = pathFromDocumentId(documentId);
-		int dirIndex = path.lastIndexOf("/");
-		String filename = path.substring(dirIndex + 1);
-		String dir = path.substring(0, dirIndex + 1);
-		String thumbnailPath = dir + ".sh_thumbnails/normal/" + getXDGThumbnailFile(filename);
-		try {
-			ParcelFileDescriptor fd = openDocument(documentIdFromPath(thumbnailPath), "r", signal);
-			return new AssetFileDescriptor(fd, 0, fd.getStatSize());
-		} catch (FileNotFoundException e) {
-		}
-
-		if (Build.VERSION.SDK_INT >= 30 && ExifInterface.isSupportedMimeType(getDocumentType(documentId))) {
-			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
-
-			var stream = new AutoCloseInputStream(fd);
-
-			try {
-				var exif = new ExifInterface(stream);
-				var range = exif.getThumbnailRange();
-				if (range != null) {
-					return new AssetFileDescriptor(fd, range[0], range[1]);
-				}
-				stream.close();
-			} catch (IOException e) {
-			}
-		}
-
-		throw new FileNotFoundException();
-	}
-
 	private Object[] getDocumentRow(String dir, String displayName,
 			String[] cols, Set<String> thumbnails, CephStat parentStat)
 			throws FileNotFoundException {
@@ -374,7 +255,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				return lcs;
 			}
 		}) : lcs;
-		String mimeType = getMime(cs.mode, displayName);
+		String mimeType = getType(cs.mode, displayName);
 
 		return Arrays.stream(cols).map(col -> switch (col) {
 			case Document.COLUMN_DISPLAY_NAME -> displayName;
@@ -394,9 +275,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 					}
 					break;
 				case S_IFREG:
-					if ((MetadataReader.isSupportedMimeType(mimeType) ||
-							MediaMetadataReader.isSupportedMimeType(mimeType)) &&
-							mayRead(cs)) {
+					if (typeSupportsMetadata(mimeType) && mayRead(cs)) {
 						// noinspection InlinedApi
 						flags |= Document.FLAG_SUPPORTS_METADATA;
 					}
@@ -404,7 +283,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						flags |= Document.FLAG_SUPPORTS_WRITE;
 					}
 
-					if (Build.VERSION.SDK_INT >= 30 && ExifInterface.isSupportedMimeType(mimeType)) {
+					if (typeSupportsThumbnail(mimeType)) {
 						// may be available in exif, skip the search (but prefer xdg)
 						flags |= Document.FLAG_SUPPORTS_THUMBNAIL;
 					} else {
@@ -413,7 +292,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 						if (thumbnails != null) {
 							thumbnailFound = thumbnails.contains(thumbnail);
 						} else {
-							String thubmailPath = dir + ".sh_thumbnails/normal/" + thumbnail;
+							String thubmailPath = dir + XDG_THUMBNAIL_NORMAL_DIR + thumbnail;
 							var ncs = new CephStat();
 							thumbnailFound = executor.executeWithUnchecked(cm -> {
 								try {
@@ -470,6 +349,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		}).toArray();
 	}
 
+	@Override
 	public Cursor queryChildDocuments(String parentDocumentId,
 			String[] projection, String sortOrder)
 			throws FileNotFoundException {
@@ -506,7 +386,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		try {
 			thumbnailFiles = executor.execute(cm -> {
 				try {
-					return cm.listdir(path + "/.sh_thumbnails/normal");
+					return cm.listdir(path + "/" + XDG_THUMBNAIL_NORMAL_DIR);
 				} catch (FileNotFoundException e) {
 					return new String[0];
 				}
@@ -535,6 +415,7 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return result;
 	}
 
+	@Override
 	public Cursor queryDocument(String documentId, String[] projection)
 			throws FileNotFoundException {
 		Log.v(APP_NAME, "queryDocument " + documentId);
@@ -548,21 +429,6 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return result;
 	}
 
-	// default implementation query without projection, which is costly
-	// TODO try to upstream the idea?
-	public String getDocumentType(String documentId)
-			throws FileNotFoundException {
-		try (var c = new UncheckedAutoCloseable<Cursor>(queryDocument(
-				documentId, new String[]{Document.COLUMN_MIME_TYPE}))) {
-			if (c.c().moveToFirst()) {
-				return c.c().getString(
-					c.c().getColumnIndexOrThrow(Document.COLUMN_MIME_TYPE));
-			} else {
-				return null;
-			}
-		}
-	}
-
 	private long getXattrULL(String path, String name)
 			throws FileNotFoundException {
 		var buf = new byte[32];
@@ -573,31 +439,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 		return Long.parseUnsignedLong(s);
 	}
 
-	public Bundle getDocumentMetadata(String documentId)
+	@Override
+	public Bundle getDocumentMetadata(String documentId, String mimeType)
 			throws FileNotFoundException {
-		Log.v(APP_NAME, "getDocumentMetadata " + documentId);
-		String mimeType = getDocumentType(documentId);
-		if (MetadataReader.isSupportedMimeType(mimeType)) {
-			ParcelFileDescriptor fd = openDocument(documentId, "r", null);
-			Bundle metadata = new Bundle();
-
-			try (var stream = new UncheckedAutoCloseable<AutoCloseInputStream>(
-						new AutoCloseInputStream(fd))) {
-				MetadataReader.getMetadata(metadata, stream.c(), mimeType, null);
-			} catch (IOException e) {
-				Log.e(APP_NAME, "getMetadata: ", e);
-				return null;
-			}
-			return metadata;
-		} else if (MediaMetadataReader.isSupportedMimeType(mimeType)) {
-			Bundle metadata = new Bundle();
-			try (var fd = new UncheckedAutoCloseable<ParcelFileDescriptor>(
-						openDocument(documentId, "r", null))){
-				MediaMetadataReader.getMetadata(metadata,
-					fd.c().getFileDescriptor(), mimeType);
-			}
-			return metadata;
-		} else if (mimeType.equals(Document.MIME_TYPE_DIR)) {
+		if (mimeType.equals(Document.MIME_TYPE_DIR)) {
 			// DocumentsUI does not show this though
 			var metadata = new Bundle();
 			var path = pathFromDocumentId(documentId);
@@ -608,9 +453,10 @@ public class CephFSDocumentsProvider extends DocumentsProvider {
 				getXattrULL(path, "ceph.dir.rbytes"));
 			return metadata;
 		}
-		return null;
+		return super.getDocumentMetadata(documentId, mimeType);
 	}
 
+	@Override
 	public Cursor queryRoots(String[] projection)
 			throws FileNotFoundException {
 		MatrixCursor result = new MatrixCursor(
